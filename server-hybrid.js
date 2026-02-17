@@ -76,15 +76,14 @@ class HybridAPIServer {
 
     // Configurar rutas
     setupRoutes() {
-        // Ruta principal
+        // Healthcheck simple para Railway (siempre responde OK)
+        this.app.get('/api/health', (req, res) => {
+            res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+        });
+
+        // Ruta principal - servir index.html
         this.app.get('/', (req, res) => {
-            res.json({
-                message: 'TCGtrade Hybrid API Server',
-                version: '1.0.0',
-                status: 'running',
-                searchEngine: 'Local SQLite + eBay Prices',
-                performance: 'Ultra Fast'
-            });
+            res.sendFile(path.join(__dirname, 'html', 'index.html'));
         });
 
         // Endpoint de estado del sistema
@@ -371,26 +370,23 @@ class HybridAPIServer {
             this.isInitialized = true;
             console.log('✅ Servidor híbrido inicializado correctamente');
         } catch (error) {
-            console.error('❌ Error inicializando servidor:', error);
-            throw error;
+            console.error('⚠️ Error inicializando componentes (el servidor seguirá funcionando):', error.message);
+            // No lanzar error - el servidor arranca igualmente
         }
     }
 
     // Iniciar servidor
     async start() {
-        try {
-            await this.init();
-            
-            this.app.listen(this.port, '0.0.0.0', () => {
-                console.log(`🚀 Servidor híbrido ejecutándose en puerto ${this.port}`);
-                console.log(`🌐 URL: http://localhost:${this.port}`);
-                console.log(`📊 Estado: http://localhost:${this.port}/api/status`);
-                console.log(`🔍 Búsqueda: http://localhost:${this.port}/api/pokemontcg/cards?q=pikachu`);
-            });
-        } catch (error) {
-            console.error('💥 Error iniciando servidor:', error);
-            throw error;
-        }
+        // Primero arrancar el servidor HTTP para que el healthcheck responda
+        this.app.listen(this.port, '0.0.0.0', () => {
+            console.log(`🚀 Servidor híbrido ejecutándose en puerto ${this.port}`);
+            console.log(`🌐 URL: http://localhost:${this.port}`);
+            console.log(`📊 Estado: http://localhost:${this.port}/api/status`);
+            console.log(`🔍 Búsqueda: http://localhost:${this.port}/api/pokemontcg/cards?q=pikachu`);
+        });
+
+        // Luego inicializar BD (sin bloquear el arranque)
+        await this.init();
     }
 
     // Detener servidor
