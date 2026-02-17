@@ -7222,10 +7222,9 @@ function setupSidebar() {
         'sidebarCollectionLink': () => {
             closeSidebar();
             // Ir directamente a Mi Perfil > Mi Colección
-            document.getElementById('profileLink')?.click();
+            showProfileSection();
             setTimeout(() => {
-                const collectionTab = document.querySelector('[data-tab="collection"]');
-                if (collectionTab) collectionTab.click();
+                switchProfileTab('collection');
             }, 100);
         },
         'sidebarInboxLink': () => {
