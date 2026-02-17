@@ -77,6 +77,33 @@ app.get('/api/status', function(req, res) {
     });
 });
 
+// Diagnostico de conexion saliente
+app.get('/api/test-connection', function(req, res) {
+    var start = Date.now();
+    https.get('https://api.pokemontcg.io/v2/types', function(response) {
+        var body = '';
+        response.on('data', function(chunk) { body += chunk; });
+        response.on('end', function() {
+            var elapsed = Date.now() - start;
+            res.json({
+                ok: true,
+                status: response.statusCode,
+                elapsed: elapsed + 'ms',
+                bodyLength: body.length,
+                bodyPreview: body.substring(0, 100)
+            });
+        });
+    }).on('error', function(err) {
+        var elapsed = Date.now() - start;
+        res.json({
+            ok: false,
+            error: err.message,
+            code: err.code,
+            elapsed: elapsed + 'ms'
+        });
+    });
+});
+
 // BUSQUEDA DE CARTAS
 app.get('/api/pokemontcg/cards', function(req, res) {
     var searchTerm = req.query.q || '';
