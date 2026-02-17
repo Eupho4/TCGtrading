@@ -99,7 +99,7 @@ class HybridAPIServer {
 
                 let apiQuery = '';
                 if (searchTerm && searchTerm.trim()) {
-                    apiQuery = `name:${searchTerm}*`;
+                    apiQuery = `name:${searchTerm}`;
                 }
 
                 const apiPath = `/v2/cards?q=${encodeURIComponent(apiQuery)}&page=${page}&pageSize=${pageSize}&orderBy=name`;
