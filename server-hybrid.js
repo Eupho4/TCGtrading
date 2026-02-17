@@ -113,56 +113,22 @@ class HybridAPIServer {
             }
         });
 
-        // Endpoint de búsqueda de cartas (con fallback a API pública)
+        // Endpoint de búsqueda de cartas (API pública como principal, PostgreSQL como intento previo)
         this.app.get('/api/pokemontcg/cards', async (req, res) => {
             const { q: searchTerm, page = 1, pageSize = 20 } = req.query;
             console.log('🔍 Búsqueda recibida:', { searchTerm, page, pageSize });
 
-            // Intentar PostgreSQL con timeout de 8 segundos
-            let pgSuccess = false;
+            // Usar directamente la API pública de pokemontcg.io
             try {
-                const pgPromise = (async () => {
-                    let term = searchTerm || '';
-                    const filters = {};
-                    if (req.query.series) filters.series = req.query.series;
-                    if (req.query.set) filters.set = req.query.set;
-                    if (req.query.rarity) filters.rarity = req.query.rarity;
-                    if (req.query.type) filters.type = req.query.type;
-                    if (req.query.subtype) filters.subtype = req.query.subtype;
-                    if (req.query.language) filters.language = req.query.language;
-                    if (req.query.hasImage) filters.hasImage = req.query.hasImage === 'true';
-                    if (req.query.hasPrice) filters.hasPrice = req.query.hasPrice === 'true';
-
-                    return await this.searchEngine.searchCards(
-                        term, parseInt(page), parseInt(pageSize), filters,
-                        req.query.sort || 'name', req.query.direction || 'asc'
-                    );
-                })();
-
-                const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('PostgreSQL timeout (8s)')), 8000)
-                );
-
-                const results = await Promise.race([pgPromise, timeoutPromise]);
-                pgSuccess = true;
+                const results = await this.fallbackToPublicAPI(req.query);
                 return res.json({ success: true, ...results });
-            } catch (pgError) {
-                console.error('⚠️ PostgreSQL falló:', pgError.message, '- usando fallback API pública');
-            }
-
-            // Fallback: API pública pokemontcg.io
-            if (!pgSuccess) {
-                try {
-                    const fallbackResults = await this.fallbackToPublicAPI(req.query);
-                    return res.json({ success: true, fallback: true, ...fallbackResults });
-                } catch (fallbackError) {
-                    console.error('❌ Fallback API también falló:', fallbackError.message);
-                    return res.status(500).json({
-                        success: false,
-                        error: 'Error en búsqueda',
-                        message: 'Base de datos y API externa no disponibles'
-                    });
-                }
+            } catch (apiError) {
+                console.error('❌ API pública falló:', apiError.message);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Error en búsqueda',
+                    message: apiError.message
+                });
             }
         });
 
