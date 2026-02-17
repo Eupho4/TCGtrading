@@ -48,7 +48,7 @@ function loadSetsAndSeries() {
             setsData.forEach(function(set) {
                 setsCache[set.id] = {
                     name: set.name || '',
-                    series: (set.serie && seriesCache[set.serie.id]) || ''
+                    series: (set.serie && set.serie.name) || ''
                 };
             });
         }
