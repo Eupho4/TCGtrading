@@ -170,9 +170,10 @@ app.get('/api/pokemontcg/cards', function(req, res) {
                 }
                 
                 var setId = (detail.set && detail.set.id) || '';
-                var setInfo = (setsCache && setsCache[setId]) || {};
+                var setName = (detail.set && detail.set.name) || '';
+                var seriesName = (detail.set && detail.set.serie && detail.set.serie.name) || '';
                 
-                console.log('Card:', detail.name, 'SetId:', setId, 'SetInfo:', JSON.stringify(setInfo));
+                console.log('Card:', detail.name, 'SetId:', setId, 'Series:', seriesName);
                 
                 return {
                     id: detail.id || '',
@@ -189,8 +190,8 @@ app.get('/api/pokemontcg/cards', function(req, res) {
                     cardmarket: detail.pricing && detail.pricing.cardmarket || {},
                     set: {
                         id: setId,
-                        name: setInfo.name || (detail.set && detail.set.name) || '',
-                        series: setInfo.series || ''
+                        name: setName,
+                        series: seriesName
                     }
                 };
             }).catch(function(err) {
