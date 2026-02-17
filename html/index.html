@@ -1,0 +1,2546 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCGtrade - Intercambio Pokémon TCG</title>
+    <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKQAAADlAAAA5QAAAKQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAApAAAAP8AAAD/AAAA/wAAAP8AAACkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAApAAAAP8AAAD/AAAA/wAAAP8AAACkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAApAAAAP8AAAD/AAAA/wAAAP8AAACkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAApAAAAOUAAADlAAAA5QAAAP8AAAD/AAAA/wAAAP8AAADlAAAA5QAAAOUAAACkAAAAAAAAAAAAAAAAAAAApAAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAApAAAAAAAAAAAAAAApAAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAApAAAAAAAAACkAAAA5QAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA5QAAAKQAAACkAAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAKQAAACkAAAA5QAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA5QAAAKQAAAAAAAAApAAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAApAAAAAAAAAAAAAAApAAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAApAAAAAAAAAAAAAAAAAAAAKQAAADlAAAA5QAAAP8AAAD/AAAA/wAAAP8AAADlAAAA5QAAAOUAAACkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAApAAAAP8AAAD/AAAA/wAAAP8AAACkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAApAAAAP8AAAD/AAAA/wAAAP8AAACkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAApAAAAP8AAAD/AAAA/wAAAP8AAACkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAApAAAAOUAAADlAAAApAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==">
+    <!-- Favicon placeholder - Pokéball style -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase - Usando versión más reciente compat para compatibilidad -->
+    <!-- Firebase - Modules loaded via app-ui.js -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'dark-bg': '#1a1a1a',
+                        'dark-card': '#2d2d2d',
+                        'dark-text': '#ffffff',
+                        'dark-text-secondary': '#a0a0a0'
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Estilos para modo oscuro */
+        .dark-mode {
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        
+        .dark-mode .bg-white {
+            background-color: #2d2d2d;
+        }
+        
+        .dark-mode .text-gray-800 {
+            color: #ffffff;
+        }
+        
+        .dark-mode .text-gray-600 {
+            color: #a0a0a0;
+        }
+        
+        .dark-mode .text-gray-700 {
+            color: #d1d5db;
+        }
+        
+        .dark-mode .border-gray-200 {
+            border-color: #4b5563;
+        }
+        
+        .dark-mode .shadow-lg {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Transiciones suaves */
+        * {
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+        }
+        
+
+    </style>
+
+<script type='module' src='/js/app-ui.js'></script>
+<link rel='stylesheet' href='/css/custom-styles.css'>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- Fondo animado con elementos flotantes -->
+    <div class="floating-background" id="floatingBackground">
+        <!-- Los elementos se generarán dinámicamente con JavaScript -->
+    </div>
+
+    <!-- Sidebar overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay" style="pointer-events: none;"></div>
+    
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800 dark:text-white">TCGtrade</h2>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Tu plataforma de intercambio</p>
+                </div>
+                <button id="closeSidebarBtn" class="close-sidebar-btn" title="Cerrar menú">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <nav class="sidebar-menu">
+            <!-- Navegación principal -->
+            <a href="#" class="sidebar-item" id="sidebarHomeLink">
+                <span class="icon">🏠</span>
+                <span>Inicio</span>
+            </a>
+            
+            <a href="#" class="sidebar-item" id="sidebarMyCardsLink">
+                <span class="icon">📦</span>
+                <span>Mis Cartas</span>
+            </a>
+            
+            <a href="#" class="sidebar-item" id="sidebarInterchangesLink">
+                <span class="icon">💱</span>
+                <span>Intercambios</span>
+            </a>
+            
+            <a href="#" class="sidebar-item" id="sidebarCollectionLink">
+                <span class="icon">📚</span>
+                <span>Mi Colección</span>
+            </a>
+            
+            <div class="sidebar-divider"></div>
+            
+            <!-- Comunicación -->
+            <a href="#" class="sidebar-item hidden" id="sidebarInboxLink">
+                <span class="icon">📬</span>
+                <span>Buzón</span>
+                <span class="ml-auto bg-red-500 text-white text-xs rounded-full px-2 py-1 hidden" id="sidebarInboxBadge">0</span>
+            </a>
+            
+            <a href="#" class="sidebar-item hidden" id="sidebarChatLink">
+                <span class="icon">💬</span>
+                <span>Chats</span>
+                <span class="ml-auto bg-green-500 text-white text-xs rounded-full px-2 py-1 hidden" id="sidebarChatBadge">0</span>
+            </a>
+            
+            <div class="sidebar-divider hidden" id="sidebarCommDivider"></div>
+            
+            <!-- Ayuda y configuración -->
+            <a href="#" class="sidebar-item" id="sidebarHelpLink">
+                <span class="icon">❓</span>
+                <span>Ayuda</span>
+            </a>
+            
+            <div class="sidebar-divider"></div>
+            
+            <!-- Sesión -->
+            <a href="#" class="sidebar-item" id="sidebarLoginLink">
+                <span class="icon">🚪</span>
+                <span>Iniciar Sesión</span>
+            </a>
+            
+            <a href="#" class="sidebar-item" id="sidebarRegisterLink">
+                <span class="icon">📝</span>
+                <span>Registrarse</span>
+            </a>
+            
+            <a href="#" class="sidebar-item hidden" id="sidebarLogoutLink">
+                <span class="icon">👋</span>
+                <span>Cerrar Sesión</span>
+            </a>
+        </nav>
+    </aside>
+
+    <!-- Enlaces ocultos para mantener compatibilidad -->
+    <div class="hidden">
+        <a id="myCardsLink"></a>
+        <a id="interchangesLink"></a>
+        <a id="helpLink"></a>
+        <a id="registerLink"></a>
+        <a id="navHomeLink"></a>
+    </div>
+
+    <!-- Header Moderno con Glassmorphism -->
+    <header class="modern-header fixed top-0 left-0 right-0 z-50" id="modernHeader">
+        <!-- Fondo con gradiente animado -->
+        <div class="header-background absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 opacity-90 dark:opacity-95"></div>
+        
+        <!-- Efecto glassmorphism -->
+        <div class="header-glass absolute inset-0 backdrop-blur-xl bg-white/10 dark:bg-black/20 border-b border-white/20 dark:border-white/10"></div>
+        
+        <!-- Partículas flotantes -->
+        <div class="header-particles absolute inset-0 overflow-hidden pointer-events-none">
+            <div class="particle particle-1"></div>
+            <div class="particle particle-2"></div>
+            <div class="particle particle-3"></div>
+            <div class="particle particle-4"></div>
+            <div class="particle particle-5"></div>
+        </div>
+        
+        <!-- Contenido del header -->
+        <div class="relative z-10 container mx-auto px-4 md:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16 md:h-20">
+                
+                <!-- Lado izquierdo: Logo y navegación -->
+                <div class="flex items-center gap-4 md:gap-6">
+                    <!-- Botón hamburguesa mejorado -->
+                    <button class="modern-hamburger group" id="hamburgerBtn" aria-label="Menú">
+                        <span class="hamburger-line"></span>
+                        <span class="hamburger-line"></span>
+                        <span class="hamburger-line"></span>
+                    </button>
+                    
+                    <!-- Logo moderno -->
+                    <a href="#" class="modern-logo group flex items-center gap-3" id="homeLink">
+                        <div class="logo-icon relative">
+                            <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                                <span class="text-white text-lg font-bold">T</span>
+                            </div>
+                            <div class="logo-glow"></div>
+                        </div>
+                        <span class="logo-text">
+                            <span class="logo-main">TCGtrade</span>
+                            <span class="logo-sub">Pokémon TCG</span>
+                        </span>
+                    </a>
+                </div>
+
+                <!-- Centro: Búsqueda inteligente -->
+                <div class="flex-1 max-w-2xl mx-4 md:mx-8">
+                    <div class="modern-search-container relative">
+                        <div class="search-glass">
+                            <div class="search-input-container">
+                                <input type="text" 
+                                       id="searchInput" 
+                                       placeholder="Buscar cartas, sets, usuarios..."
+                                       class="modern-search-input"
+                                       autocomplete="off">
+                                <div class="search-suggestions hidden" id="searchSuggestions"></div>
+                            </div>
+                            <button type="button" 
+                                    onclick="quickSearch()" 
+                                    class="modern-search-btn group"
+                                    title="Búsqueda rápida">
+                                <span class="search-btn-icon">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                    </svg>
+                                </span>
+                                <span class="search-btn-text">Buscar</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lado derecho: Acciones y perfil -->
+                <div class="flex items-center gap-2 md:gap-4">
+                    
+                    <!-- Notificaciones -->
+                    <div class="flex items-center gap-1">
+                        <button id="inboxLink" class="modern-nav-btn group hidden" title="Bandeja de entrada">
+                            <span class="nav-icon">📬</span>
+                            <span id="notificationBadge" class="notification-badge hidden">0</span>
+                        </button>
+                        
+                        <button id="chatLink" class="modern-nav-btn group hidden" title="Chat">
+                            <span class="nav-icon">💬</span>
+                            <span id="chatBadge" class="notification-badge hidden">0</span>
+                        </button>
+                    </div>
+                    
+                    <!-- Perfil / Login / Logout -->
+                    <div class="relative flex items-center gap-2">
+                        <button id="profileLink" class="modern-nav-btn group hidden" title="Perfil">
+                            <span class="nav-icon">👤</span>
+                        </button>
+                        
+                        <button id="logoutLink" class="hidden px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg flex items-center gap-2" title="Cerrar sesión">
+                            <span class="text-lg">🚪</span>
+                            <span class="text-base font-semibold whitespace-nowrap">Cerrar Sesión</span>
+                        </button>
+                        
+                        <button id="loginLink" class="modern-login-btn group" title="Iniciar sesión">
+                            <span class="login-icon">🚪</span>
+                            <span class="login-text hidden md:inline">Entrar</span>
+                        </button>
+                    </div>
+                    
+                    <!-- Modo oscuro mejorado -->
+                    <button id="darkModeToggle" class="modern-theme-toggle group" title="Cambiar tema">
+                        <div class="theme-toggle-track">
+                            <div class="theme-toggle-thumb">
+                                <span class="theme-icon theme-icon-sun">☀️</span>
+                                <span class="theme-icon theme-icon-moon">🌙</span>
+                            </div>
+                        </div>
+                    </button>
+                    
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    
+    <!-- Espaciador para el header fijo -->
+    <div class="header-spacer h-16 md:h-20"></div>
+
+    <main class="flex-grow container mx-auto p-6 md:p-10">
+        <!-- Hero Section Renovada -->
+        <section id="heroSection" class="relative overflow-hidden rounded-3xl mb-12">
+            <!-- Fondo animado con gradiente -->
+            <div class="absolute inset-0 animated-gradient opacity-20 dark:opacity-30 rounded-3xl"></div>
+            
+            <!-- Overlay sutil para mejorar legibilidad -->
+            <div class="absolute inset-0 bg-white/50 dark:bg-black/50 rounded-3xl"></div>
+            
+            <div class="relative z-10 py-20 px-4">
+                <div class="max-w-6xl mx-auto text-center">
+                    <!-- Logo y título principal -->
+                    <div class="mb-8">
+                        <div class="inline-flex items-center justify-center mb-4">
+                            <div class="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                                <span class="text-white text-2xl font-bold">T</span>
+                            </div>
+                        </div>
+                        <h1 class="text-5xl md:text-6xl font-bold text-gray-800 dark:text-white mb-4">
+                            TCGtrade
+                        </h1>
+                        <p class="text-2xl md:text-3xl text-gray-600 dark:text-gray-300 font-light">
+                            La plataforma definitiva para intercambiar cartas Pokémon TCG
+                        </p>
+                    </div>
+
+                    <!-- Características principales -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow">
+                            <div class="text-4xl mb-3">🔄</div>
+                            <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-2">Intercambios Inteligentes</h3>
+                            <p class="text-gray-600 dark:text-gray-400 text-sm">
+                                Sistema de propuestas con notificaciones en tiempo real
+                            </p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow">
+                            <div class="text-4xl mb-3">📚</div>
+                            <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-2">Tu Colección Personal</h3>
+                            <p class="text-gray-600 dark:text-gray-400 text-sm">
+                                Organiza y gestiona todas tus cartas en un solo lugar
+                            </p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow">
+                            <div class="text-4xl mb-3">🛡️</div>
+                            <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-2">Compra y Vende Seguro</h3>
+                            <p class="text-gray-600 dark:text-gray-400 text-sm">
+                                Sistema de valoraciones para transacciones confiables
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- CTAs principales -->
+                    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                        <button id="startTradingBtn" class="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white text-xl px-8 py-4 rounded-full font-bold shadow-lg hover:shadow-xl transition-all transform hover:scale-105">
+                            🚀 Empezar Ahora
+                        </button>
+                        <button onclick="showHelpSection('newFeatures')" class="bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-white text-xl px-8 py-4 rounded-full font-bold shadow-lg hover:shadow-xl transition-all border-2 border-gray-300 dark:border-gray-600">
+                            ✨ Ver Novedades
+                        </button>
+                    </div>
+
+                    <!-- Estadísticas -->
+                    <div class="mt-16 grid grid-cols-3 gap-8 max-w-3xl mx-auto">
+                        <div class="text-center">
+                            <div class="text-3xl font-bold text-orange-500" id="totalUsersCount">1,234</div>
+                            <div class="text-gray-600 dark:text-gray-400">Usuarios Activos</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-3xl font-bold text-green-500" id="totalTradesCount">5,678</div>
+                            <div class="text-gray-600 dark:text-gray-400">Intercambios</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-3xl font-bold text-purple-500" id="globalTotalCardsCount">45,678</div>
+                            <div class="text-gray-600 dark:text-gray-400">Cartas en Colección</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Nueva Sección: Cómo Funciona -->
+        <section id="howItWorksSection" class="py-16 bg-gray-50 dark:bg-gray-900">
+            <div class="max-w-6xl mx-auto px-4">
+                <h2 class="text-4xl font-bold text-center text-gray-800 dark:text-white mb-12">
+                    ¿Cómo funciona TCGtrade?
+                </h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                    <!-- Paso 1 -->
+                    <div class="relative">
+                        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg">
+                            <div class="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-purple-500 to-pink-500 text-white w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl">
+                                1
+                            </div>
+                            <div class="mt-4 text-center">
+                                <div class="text-3xl mb-3">📝</div>
+                                <h3 class="font-bold text-gray-800 dark:text-white mb-2">Regístrate</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">
+                                    Crea tu cuenta con nombre único
+                                </p>
+                            </div>
+                        </div>
+                        <div class="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2 text-gray-400">
+                            →
+                        </div>
+                    </div>
+
+                    <!-- Paso 2 -->
+                    <div class="relative">
+                        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg">
+                            <div class="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-pink-500 to-orange-500 text-white w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl">
+                                2
+                            </div>
+                            <div class="mt-4 text-center">
+                                <div class="text-3xl mb-3">🎴</div>
+                                <h3 class="font-bold text-gray-800 dark:text-white mb-2">Añade Cartas</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">
+                                    Construye tu colección personal
+                                </p>
+                            </div>
+                        </div>
+                        <div class="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2 text-gray-400">
+                            →
+                        </div>
+                    </div>
+
+                    <!-- Paso 3 -->
+                    <div class="relative">
+                        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg">
+                            <div class="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-orange-500 to-yellow-500 text-white w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl">
+                                3
+                            </div>
+                            <div class="mt-4 text-center">
+                                <div class="text-3xl mb-3">💬</div>
+                                <h3 class="font-bold text-gray-800 dark:text-white mb-2">Propón Intercambios</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">
+                                    Envía y recibe propuestas
+                                </p>
+                            </div>
+                        </div>
+                        <div class="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2 text-gray-400">
+                            →
+                        </div>
+                    </div>
+
+                    <!-- Paso 4 -->
+                    <div class="relative">
+                        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg">
+                            <div class="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-yellow-500 to-green-500 text-white w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl">
+                                4
+                            </div>
+                            <div class="mt-4 text-center">
+                                <div class="text-3xl mb-3">⭐</div>
+                                <h3 class="font-bold text-gray-800 dark:text-white mb-2">Valora</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">
+                                    Califica con Pokéballs
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Nueva Sección: Características Destacadas -->
+        <section id="featuresSection" class="py-16">
+            <div class="max-w-6xl mx-auto px-4">
+                <h2 class="text-4xl font-bold text-center text-gray-800 dark:text-white mb-12">
+                    Características Exclusivas
+                </h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- Contador de Ofrecidas -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-8 border border-blue-200 dark:border-blue-800">
+                        <div class="flex items-start gap-4">
+                            <div class="text-4xl">📊</div>
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-3">
+                                    Contador de Cartas Ofrecidas
+                                </h3>
+                                <p class="text-gray-600 dark:text-gray-400 mb-3">
+                                    Ve al instante cuántas personas ofrecen cada carta. Haz click en el contador para ver quién las tiene y qué buscan a cambio.
+                                </p>
+                                <div class="bg-white dark:bg-gray-800 rounded-lg p-3 inline-block">
+                                    <span class="text-sm text-gray-500 dark:text-gray-400">Ejemplo:</span>
+                                    <span class="ml-2 bg-green-500 text-white px-2 py-1 rounded text-sm font-bold">
+                                        12 Ofrecidas
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sistema de Buzón -->
+                    <div class="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl p-8 border border-purple-200 dark:border-purple-800">
+                        <div class="flex items-start gap-4">
+                            <div class="text-4xl">📨</div>
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-3">
+                                    Buzón Inteligente
+                                </h3>
+                                <p class="text-gray-600 dark:text-gray-400 mb-3">
+                                    Nunca pierdas una propuesta. Recibe notificaciones instantáneas, gestiona ofertas recibidas y enviadas, todo en un solo lugar.
+                                </p>
+                                <div class="flex gap-2">
+                                    <span class="bg-purple-500 text-white px-3 py-1 rounded-full text-sm">
+                                        Notificaciones
+                                    </span>
+                                    <span class="bg-pink-500 text-white px-3 py-1 rounded-full text-sm">
+                                        Propuestas
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Selección desde Colección -->
+                    <div class="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-8 border border-green-200 dark:border-green-800">
+                        <div class="flex items-start gap-4">
+                            <div class="text-4xl">📚</div>
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-3">
+                                    Integración con Tu Colección
+                                </h3>
+                                <p class="text-gray-600 dark:text-gray-400 mb-3">
+                                    Añade cartas directamente desde tu colección a los intercambios. Los campos se bloquean automáticamente para evitar errores.
+                                </p>
+                                <button class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                                    📚 Desde Mis Cartas
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Valoraciones con Pokéballs -->
+                    <div class="bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 rounded-xl p-8 border border-yellow-200 dark:border-yellow-800">
+                        <div>
+                            <div class="flex items-center flex-wrap gap-3 mb-4">
+                                <div class="flex gap-1 flex-shrink-0">
+                                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png" 
+                                         class="w-8 h-8">
+                                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/great-ball.png" 
+                                         class="w-8 h-8">
+                                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/master-ball.png" 
+                                         class="w-8 h-8">
+                                </div>
+                                <h3 class="text-xl font-bold text-gray-800 dark:text-white">
+                                    Sistema de Valoración Único
+                                </h3>
+                            </div>
+                            <p class="text-gray-600 dark:text-gray-400 mb-3">
+                                Valora a otros usuarios con Pokéballs reales. Desde Premier Ball hasta Master Ball, construye tu reputación en la comunidad.
+                            </p>
+                            <div class="text-sm text-gray-500 dark:text-gray-400">
+                                ⭐⭐⭐⭐⭐ = Master Ball
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA Final -->
+        <section id="ctaSection" class="py-20 bg-gradient-to-r from-purple-600 to-pink-600 dark:from-purple-800 dark:to-pink-800">
+            <div class="max-w-4xl mx-auto px-4 text-center">
+                <h2 class="text-4xl font-bold text-white mb-6">
+                    ¿Listo para empezar tu aventura?
+                </h2>
+                <p class="text-xl text-white/90 mb-8">
+                    Únete a la comunidad de intercambio de cartas Pokémon más innovadora
+                </p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <button onclick="showAuthModal('register')" class="bg-white hover:bg-gray-100 text-purple-600 text-xl px-8 py-4 rounded-full font-bold shadow-lg hover:shadow-xl transition-all">
+                        🎯 Crear Cuenta Gratis
+                    </button>
+                    <button onclick="showInterchangesSection(); loadAvailableTrades()" class="bg-purple-800 hover:bg-purple-900 text-white text-xl px-8 py-4 rounded-full font-bold shadow-lg hover:shadow-xl transition-all">
+                        🔍 Explorar Intercambios
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section id="searchResults" class="mb-12 hidden">
+            <h2 class="text-3xl font-bold mb-6 text-gray-700 dark:text-white flex items-center">
+                <span class="icon">✨</span> Resultados de Búsqueda
+            </h2>
+
+            <div class="flex flex-col lg:flex-row gap-6">
+                <!-- Sidebar de filtros -->
+                <aside id="searchFiltersSidebar" class="w-full lg:w-64 bg-white dark:bg-gray-800 rounded-xl shadow p-4 h-max">
+                    <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-3">Filtros</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Serie</label>
+                            <select id="filterSeriesSelect" class="w-full border rounded px-2 py-2 dark:bg-gray-700 dark:text-white">
+                                <option value="">Todas las Series</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Set</label>
+                            <select id="filterSetSelect" class="w-full border rounded px-2 py-2 dark:bg-gray-700 dark:text-white">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rareza</label>
+                            <select id="filterRaritySelect" class="w-full border rounded px-2 py-2 dark:bg-gray-700 dark:text-white">
+                                <option value="">Todas</option>
+                                <!-- Ordenado de menos raro a más raro -->
+                                <option value="Common">Common</option>
+                                <option value="Uncommon">Uncommon</option>
+                                <option value="Rare">Rare</option>
+                                <option value="Rare Holo">Rare Holo</option>
+                                <option value="Rare Prime">Rare Prime</option>
+                                <option value="Rare BREAK">Rare BREAK</option>
+                                <option value="Rare Holo EX">Rare Holo EX</option>
+                                <option value="Rare Holo GX">Rare Holo GX</option>
+                                <option value="Rare Holo V">Rare Holo V</option>
+                                <option value="Rare Holo VMAX">Rare Holo VMAX</option>
+                                <option value="Rare Holo VSTAR">Rare Holo VSTAR</option>
+                                <option value="Rare Holo ex">Rare Holo ex</option>
+                                <option value="Rare Holo Tera ex">Rare Holo Tera ex</option>
+                                <option value="Rare Ultra">Rare Ultra</option>
+                                <option value="Rare Rainbow">Rare Rainbow</option>
+                                <option value="Rare Shining">Rare Shining</option>
+                                <option value="Rare Shiny">Rare Shiny</option>
+                                <option value="Rare Shiny GX">Rare Shiny GX</option>
+                                <option value="Rare Shiny V">Rare Shiny V</option>
+                                <option value="Rare Shiny VMAX">Rare Shiny VMAX</option>
+                                <option value="Rare Shiny ex">Rare Shiny ex</option>
+                                <option value="Rare Shiny Tera ex">Rare Shiny Tera ex</option>
+                                <option value="Rare Amazing">Rare Amazing</option>
+                                <option value="Rare Radiant">Rare Radiant</option>
+                                <option value="Rare Special">Rare Special</option>
+                                <option value="Rare Illustration">Rare Illustration</option>
+                                <option value="Rare ACE SPEC">Rare ACE SPEC</option>
+                                <option value="Rare Hyper">Rare Hyper</option>
+                                <option value="Rare Double Rare">Rare Double Rare</option>
+                                <option value="Rare Triple Rare">Rare Triple Rare</option>
+                                <option value="Rare Ultra Rare">Rare Ultra Rare</option>
+                                <option value="Rare Secret">Rare Secret</option>
+                                <option value="Rare Secret Rare">Rare Secret Rare</option>
+                                <option value="Rare Amazing Rare">Rare Amazing Rare</option>
+                                <option value="Rare Radiant Rare">Rare Radiant Rare</option>
+                                <option value="Rare Special Illustration Rare">Rare Special Illustration Rare</option>
+                                <option value="Rare Hyper Rare">Rare Hyper Rare</option>
+                                <option value="Rare LEGEND">Rare LEGEND</option>
+                                <option value="Rare Promo">Rare Promo</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo</label>
+                            <select id="filterTypeSelect" class="w-full border rounded px-2 py-2 dark:bg-gray-700 dark:text-white">
+                                <option value="">Todos</option>
+                                <option value="Grass">Grass</option>
+                                <option value="Fire">Fire</option>
+                                <option value="Water">Water</option>
+                                <option value="Lightning">Lightning</option>
+                                <option value="Psychic">Psychic</option>
+                                <option value="Fighting">Fighting</option>
+                                <option value="Darkness">Darkness</option>
+                                <option value="Metal">Metal</option>
+                                <option value="Fairy">Fairy</option>
+                                <option value="Dragon">Dragon</option>
+                                <option value="Colorless">Colorless</option>
+                                <option value="Trainer">Trainer</option>
+                                <option value="Energy">Energy</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Idioma</label>
+                            <select id="filterLanguageSelect" class="w-full border rounded px-2 py-2 dark:bg-gray-700 dark:text-white">
+                                <option value="">Cualquiera</option>
+                                <option value="English">Inglés</option>
+                                <option value="Spanish">Español</option>
+                                <option value="Japanese">Japonés</option>
+                                <option value="French">Francés</option>
+                                <option value="German">Alemán</option>
+                                <option value="Italian">Italiano</option>
+                                <option value="Chinese">Chino</option>
+                                <option value="Korean">Coreano</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-2 pt-2">
+                            <button id="applySearchFiltersBtn" class="btn-primary px-3 py-2 rounded text-sm">Aplicar</button>
+                            <button id="clearSearchFiltersBtn" class="btn-secondary px-3 py-2 rounded text-sm">Limpiar</button>
+                        </div>
+                    </div>
+                </aside>
+                <!-- Lista de resultados -->
+                <div class="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow p-2">
+                    <!-- Loading spinner -->
+                    <div id="loadingSpinner" class="hidden flex flex-col items-center justify-center py-20">
+                        <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-8"></div>
+                        <div class="text-center">
+                            <h3 class="text-2xl font-bold text-gray-800 dark:text-white mb-2">🔍 Buscando cartas...</h3>
+                            <p class="text-gray-600 dark:text-gray-400 text-lg">Espera un momento mientras encontramos las mejores cartas para ti</p>
+                        </div>
+                    </div>
+                    <div id="cardsContainer" class="divide-y divide-gray-200 dark:divide-gray-700"></div>
+                    <p id="noResultsMessage" class="text-center text-gray-600 dark:text-gray-400 mt-8 hidden">No se encontraron resultados para tu búsqueda.</p>
+                    <p id="errorMessage" class="text-center text-red-500 mt-8 hidden">Ha ocurrido un error al cargar las cartas.</p>
+                    <div id="searchPagination" class="mt-4 flex justify-center items-center gap-1"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección Mis Cartas Moderna -->
+        <section id="myCardsSection" class="mb-12 hidden">
+            <!-- Header de la sección -->
+            <div class="modern-section-header mb-8">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="collection-icon">
+                            <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                                <span class="text-white text-xl">📚</span>
+                            </div>
+                        </div>
+                        <div>
+                            <h2 class="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                                Mi Colección
+                            </h2>
+                            <p class="text-gray-600 dark:text-gray-400 mt-1">Gestiona y organiza tus cartas Pokémon TCG</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Controles de vista -->
+                    <div class="flex items-center gap-3">
+                        <div class="view-toggle">
+                            <button id="gridViewBtn" class="view-btn active" title="Vista de tarjetas">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                                </svg>
+                            </button>
+                            <button id="listViewBtn" class="view-btn" title="Vista de lista">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <button id="addCardBtn" class="modern-add-btn">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                            </svg>
+                            <span>Añadir Carta</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Estadísticas de la colección -->
+            <div class="collection-stats mb-8">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">🎴</div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="totalCardsStat">0</div>
+                            <div class="stat-label">Cartas Totales</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📦</div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="totalSetsStat">0</div>
+                            <div class="stat-label">Sets Diferentes</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⭐</div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="rareCardsStat">0</div>
+                            <div class="stat-label">Cartas Raras</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">💎</div>
+                        <div class="stat-content">
+                            <div class="stat-number" id="holoCardsStat">0</div>
+                            <div class="stat-label">Cartas Holo</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel de filtros y búsqueda -->
+            <div class="modern-filters-panel mb-6">
+                <div class="filters-header">
+                    <h3 class="filters-title">Filtros y Búsqueda</h3>
+                    <button id="clearFiltersBtn" class="clear-filters-btn">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                        Limpiar
+                    </button>
+                </div>
+                
+                <div class="filters-grid">
+                    <!-- Búsqueda rápida -->
+                    <div class="filter-group">
+                        <label class="filter-label">🔍 Búsqueda Rápida</label>
+                        <div class="search-input-group">
+                            <input type="text" id="collectionSearchInput" placeholder="Buscar por nombre, set, tipo..." class="modern-search-input">
+                            <button id="searchCollectionBtn" class="search-btn">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Filtro por serie -->
+                    <div class="filter-group">
+                        <label class="filter-label">📚 Serie</label>
+                        <select id="seriesFilter" class="modern-select">
+                            <option value="">Todas las Series</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Filtro por set -->
+                    <div class="filter-group">
+                        <label class="filter-label">📦 Expansión</label>
+                        <select id="setFilter" class="modern-select" disabled>
+                            <option value="">Todas las Expansiones</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Filtro por rareza -->
+                    <div class="filter-group">
+                        <label class="filter-label">⭐ Rareza</label>
+                        <select id="rarityFilter" class="modern-select">
+                            <option value="">Todas las Rarezas</option>
+                            <option value="Common">Common</option>
+                            <option value="Uncommon">Uncommon</option>
+                            <option value="Rare">Rare</option>
+                            <option value="Rare Holo">Rare Holo</option>
+                            <option value="Rare Ultra">Rare Ultra</option>
+                            <option value="Rare Secret">Rare Secret</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Filtro por idioma -->
+                    <div class="filter-group">
+                        <label class="filter-label">🌍 Idioma</label>
+                        <select id="languageFilter" class="modern-select">
+                            <option value="">Todos los Idiomas</option>
+                            <option value="Español">🇪🇸 Español</option>
+                            <option value="Inglés">🇺🇸 Inglés</option>
+                            <option value="Japonés">🇯🇵 Japonés</option>
+                            <option value="Francés">🇫🇷 Francés</option>
+                            <option value="Alemán">🇩🇪 Alemán</option>
+                            <option value="Chino">🇨🇳 Chino</option>
+                            <option value="Coreano">🇰🇷 Coreano</option>
+                            <option value="Italiano">🇮🇹 Italiano</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Filtro por condición -->
+                    <div class="filter-group">
+                        <label class="filter-label">🔧 Condición</label>
+                        <select id="conditionFilter" class="modern-select">
+                            <option value="">Todas las Condiciones</option>
+                            <option value="Mint">Mint</option>
+                            <option value="Near Mint">Near Mint</option>
+                            <option value="Excellent">Excellent</option>
+                            <option value="Good">Good</option>
+                            <option value="Light Played">Light Played</option>
+                            <option value="Played">Played</option>
+                            <option value="Poor">Poor</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="filters-actions">
+                    <button id="applyFiltersBtn" class="apply-filters-btn">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z"></path>
+                        </svg>
+                        Aplicar Filtros
+                    </button>
+                    
+                    <div class="filter-options">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showAllSetCardsToggle" class="modern-checkbox" disabled>
+                            <span class="checkmark"></span>
+                            Mostrar cartas faltantes del set
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contenedor de cartas -->
+            <div class="cards-container">
+                <!-- Vista de tarjetas (grid) -->
+                <div id="cardsGridView" class="cards-grid">
+                    <!-- Las cartas se mostrarán aquí en formato grid -->
+                </div>
+                
+                <!-- Vista de lista -->
+                <div id="cardsListView" class="cards-list hidden">
+                    <!-- Las cartas se mostrarán aquí en formato lista -->
+                </div>
+            </div>
+
+            <!-- Mensajes de estado -->
+            <div id="collectionMessages" class="collection-messages">
+                <div id="noMyCardsMessage" class="empty-state hidden">
+                    <div class="empty-icon">📦</div>
+                    <h3 class="empty-title">Tu colección está vacía</h3>
+                    <p class="empty-description">Aún no tienes cartas en tu colección. ¡Busca y añade algunas para empezar!</p>
+                    <button class="empty-action-btn" onclick="showSearchSection()">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        Buscar Cartas
+                    </button>
+                </div>
+                
+                <div id="myCardsErrorMessage" class="error-state hidden">
+                    <div class="error-icon">⚠️</div>
+                    <h3 class="error-title">Error al cargar la colección</h3>
+                    <p class="error-description">No se pudo cargar tu colección. Por favor, inténtalo de nuevo.</p>
+                    <button class="error-action-btn" onclick="location.reload()">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Recargar Página
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección de Buzón -->
+        <div id="inboxSection" class="hidden">
+            <div class="max-w-6xl mx-auto">
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+                    <div class="bg-gradient-to-r from-purple-600 to-indigo-600 p-6">
+                        <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+                            📬 Buzón de Notificaciones
+                        </h2>
+                        <p class="text-purple-100 mt-2">Gestiona tus propuestas y mensajes</p>
+                    </div>
+                    
+                    <div class="border-b border-gray-200 dark:border-gray-700">
+                        <nav class="flex space-x-8 px-6" aria-label="Tabs">
+                            <button id="inboxNotificationsTab" class="inbox-tab active py-4 px-1 border-b-2 border-purple-500 text-purple-600 font-medium text-sm">
+                                🔔 Notificaciones
+                            </button>
+                            <button id="inboxProposalsTab" class="inbox-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                💼 Propuestas Recibidas
+                            </button>
+                            <button id="inboxSentProposalsTab" class="inbox-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                📤 Propuestas Enviadas
+                            </button>
+                        </nav>
+                    </div>
+                    
+                    <div class="p-6">
+                        <!-- Tab de Notificaciones -->
+                        <div id="inboxNotificationsContent" class="inbox-content">
+                            <div id="notificationsList" class="space-y-3">
+                                <!-- Las notificaciones se cargarán aquí -->
+                            </div>
+                        </div>
+                        
+                        <!-- Tab de Propuestas Recibidas -->
+                        <div id="inboxProposalsContent" class="inbox-content hidden">
+                            <div id="receivedProposalsList" class="space-y-4">
+                                <!-- Las propuestas recibidas se cargarán aquí -->
+                            </div>
+                        </div>
+                        
+                        <!-- Tab de Propuestas Enviadas -->
+                        <div id="inboxSentProposalsContent" class="inbox-content hidden">
+                            <div id="sentProposalsList" class="space-y-4">
+                                <!-- Las propuestas enviadas se cargarán aquí -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección de Ayuda -->
+        <section id="helpSection" class="mb-12 hidden">
+            <div class="max-w-6xl mx-auto">
+                <!-- Header de Ayuda -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6">
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div>
+                            <h2 class="text-3xl font-bold text-gray-800 dark:text-white mb-2 flex items-center">
+                                <span class="icon mr-3">❓</span> Centro de Ayuda
+                            </h2>
+                            <p class="text-gray-600">Encuentra respuestas a todas tus preguntas sobre TCGtrade</p>
+                        </div>
+                        <div class="flex space-x-3">
+                            <button id="searchHelpBtn" class="btn-primary px-6 py-3 rounded-lg text-sm font-semibold flex items-center">
+                                <span class="icon mr-2">🔍</span> Buscar Ayuda
+                            </button>
+                            <button id="contactSupportBtn" class="btn-secondary px-6 py-3 rounded-lg text-sm font-semibold flex items-center">
+                                <span class="icon mr-2">📧</span> Contactar Soporte
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabs de Ayuda -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg mb-6">
+                    <div class="border-b border-gray-200">
+                        <nav class="flex space-x-8 px-6" aria-label="Tabs">
+                            <button id="helpGettingStartedTab" class="help-tab active py-4 px-1 border-b-2 border-orange-500 text-orange-600 font-medium text-sm">
+                                🚀 Primeros Pasos
+                            </button>
+                            <button id="helpTradingTab" class="help-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                🤝 Intercambios
+                            </button>
+                            <button id="helpCardConditionsTab" class="help-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                🎴 Condiciones de Cartas
+                            </button>
+                            <button id="helpAccountTab" class="help-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                👤 Cuenta y Perfil
+                            </button>
+                            <button id="helpFAQTab" class="help-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                ❓ FAQ
+                            </button>
+                            <button id="helpNewFeaturesTab" class="help-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                ✨ Novedades
+                            </button>
+                        </nav>
+                    </div>
+                </div>
+
+                <!-- Contenido de Primeros Pasos -->
+                <div id="helpGettingStartedContent" class="help-tab-content">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center">
+                            <span class="icon mr-2">🚀</span> Primeros Pasos en TCGtrade
+                        </h3>
+                        
+                        <div class="space-y-6">
+                            <div class="border-l-4 border-orange-500 pl-4">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">1. Crear tu Cuenta</h4>
+                                <p class="text-gray-600 dark:text-gray-400 mb-3">Regístrate con tu email y crea un nombre de usuario único. Este será tu identificador en toda la plataforma.</p>
+                                <div class="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                                    <p class="text-sm text-gray-700 dark:text-gray-300">
+                                        <strong>💡 Nuevo:</strong> Tu nombre de usuario aparecerá en todos tus intercambios. 
+                                        Puedes recuperar tu contraseña desde la pantalla de login si la olvidas.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="border-l-4 border-blue-500 pl-4">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">2. Construir tu Colección</h4>
+                                <p class="text-gray-600 dark:text-gray-400 mb-3">Busca cartas y añádelas a tu colección personal con todos los detalles.</p>
+                                <div class="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-lg">
+                                    <ul class="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                                        <li>✅ Selecciona la condición (Mint, NM, EX, etc.)</li>
+                                        <li>✅ Elige el idioma (Español, Inglés, Japonés, Chino, Coreano, etc.)</li>
+                                        <li>✅ Las imágenes se guardan automáticamente</li>
+                                        <li>✅ Puedes ver tu colección en "Mis Cartas"</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="border-l-4 border-green-500 pl-4">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">3. Crear tu Primer Intercambio</h4>
+                                <p class="text-gray-600 dark:text-gray-400 mb-3">Crea intercambios de dos formas:</p>
+                                <div class="bg-green-50 dark:bg-green-900/30 p-3 rounded-lg">
+                                    <ul class="text-sm text-green-700 dark:text-green-300 space-y-1">
+                                        <li>🔍 <strong>Búsqueda en API:</strong> Busca cartas en tiempo real</li>
+                                        <li>📚 <strong>Desde Mis Cartas:</strong> Selecciona directamente de tu colección</li>
+                                        <li>🔒 Las cartas de tu colección se bloquean automáticamente</li>
+                                        <li>✏️ Puedes modificar tus intercambios en cualquier momento</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="border-l-4 border-purple-500 pl-4">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">4. Sistema de Propuestas</h4>
+                                <p class="text-gray-600 dark:text-gray-400 mb-3">Responde a intercambios de otros usuarios con contrapropuestas.</p>
+                                <div class="bg-purple-50 dark:bg-purple-900/30 p-3 rounded-lg">
+                                    <ul class="text-sm text-purple-700 dark:text-purple-300 space-y-1">
+                                        <li>💬 Propón intercambios alternativos</li>
+                                        <li>📨 Recibe notificaciones en tu Buzón</li>
+                                        <li>👁️ Ve los detalles completos de cada propuesta</li>
+                                        <li>✅ Acepta, rechaza o contraoferta</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="border-l-4 border-yellow-500 pl-4">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">5. Sistema de Valoraciones</h4>
+                                <p class="text-gray-600 dark:text-gray-400 mb-3">Valora a otros usuarios después de completar intercambios.</p>
+                                <div class="bg-yellow-50 dark:bg-yellow-900/30 p-3 rounded-lg">
+                                    <p class="text-sm text-yellow-700 dark:text-yellow-300">
+                                        <strong>🎯 Sistema Pokéball:</strong> Valora de 1 a 5 usando Pokéballs 
+                                        (Premier, Poké, Great, Ultra, Master Ball). Las valoraciones aparecen en tu perfil.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido de Intercambios -->
+                <div id="helpTradingContent" class="help-tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center">
+                            <span class="icon mr-2">🤝</span> Guía Completa de Intercambios
+                        </h3>
+                        
+                        <div class="space-y-6">
+                            <div class="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 p-4 rounded-lg">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">📋 Crear un Intercambio</h4>
+                                <div class="space-y-3">
+                                    <div class="bg-white/70 dark:bg-gray-800/70 p-3 rounded">
+                                        <h5 class="font-medium text-gray-700 dark:text-gray-300 mb-2">Métodos de Selección:</h5>
+                                        <ul class="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                                            <li>• <strong>Búsqueda API:</strong> Escribe el nombre y selecciona de los resultados</li>
+                                            <li>• <strong>Desde Mis Cartas:</strong> Click en "📚 Desde Mis Cartas" para tu colección</li>
+                                            <li>• <strong>Bloqueo Inteligente:</strong> Las cartas de API se bloquean al añadir, las de colección se bloquean automáticamente</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-4 rounded-lg">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">💬 Sistema de Propuestas</h4>
+                                <div class="grid md:grid-cols-2 gap-3">
+                                    <div class="bg-white/70 dark:bg-gray-800/70 p-3 rounded">
+                                        <h5 class="font-medium text-green-700 dark:text-green-300 mb-2">Enviar Propuesta:</h5>
+                                        <ul class="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                                            <li>1. Click en "Ver" en un intercambio</li>
+                                            <li>2. Click en "Proponer Intercambio"</li>
+                                            <li>3. Ofrece tus cartas</li>
+                                            <li>4. Añade un mensaje opcional</li>
+                                        </ul>
+                                    </div>
+                                    <div class="bg-white/70 dark:bg-gray-800/70 p-3 rounded">
+                                        <h5 class="font-medium text-green-700 dark:text-green-300 mb-2">Gestionar Propuestas:</h5>
+                                        <ul class="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                                            <li>• Ve al Buzón para ver propuestas</li>
+                                            <li>• Acepta, rechaza o contraoferta</li>
+                                            <li>• Recibe notificaciones automáticas</li>
+                                            <li>• Ve detalles completos con imágenes</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 p-4 rounded-lg">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">📊 Contador de Ofertas</h4>
+                                <p class="text-gray-600 dark:text-gray-400 mb-3">En los resultados de búsqueda, verás cuántas personas ofrecen cada carta:</p>
+                                <div class="bg-white/70 dark:bg-gray-800/70 p-3 rounded">
+                                    <ul class="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                                        <li>• Click en el número de "Ofrecidas" para ver quién las ofrece</li>
+                                        <li>• Ve qué buscan a cambio</li>
+                                        <li>• Contacta directamente con los usuarios</li>
+                                        <li>• Encuentra intercambios más fácilmente</li>
+                                    </ul>
+                                </div>
+                            </div>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                    <div class="bg-white dark:bg-gray-700 p-3 rounded border dark:border-gray-600">
+                                        <h5 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">📤 Crear un Intercambio</h5>
+                                        <ul class="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                                            <li>• Selecciona las cartas que ofreces</li>
+                                            <li>• Especifica las cartas que buscas</li>
+                                            <li>• Define las condiciones aceptables</li>
+                                            <li>• Añade una descripción clara</li>
+                                        </ul>
+                                    </div>
+                                    <div class="bg-white dark:bg-gray-700 p-3 rounded border dark:border-gray-600">
+                                        <h5 class="font-semibold text-gray-800 dark:text-gray-200 mb-2">📥 Responder a Intercambios</h5>
+                                        <ul class="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                                            <li>• Revisa las condiciones detalladamente</li>
+                                            <li>• Propón una oferta específica</li>
+                                            <li>• Comunícate con el creador</li>
+                                            <li>• Acuerda los detalles del envío</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-orange-50 dark:bg-orange-900/30 p-4 rounded-lg">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">🛡️ Consejos de Seguridad</h4>
+                                <ul class="text-gray-600 dark:text-gray-400 space-y-2">
+                                    <li><strong>📸 Fotos detalladas:</strong> Siempre incluye fotos claras de las cartas que ofreces</li>
+                                    <li><strong>📋 Descripción completa:</strong> Describe cualquier defecto o característica especial</li>
+                                    <li><strong>📞 Comunicación:</strong> Mantén una comunicación clara y respetuosa</li>
+                                    <li><strong>📦 Envío seguro:</strong> Usa métodos de envío con seguimiento</li>
+                                    <li><strong>⏰ Paciencia:</strong> Los intercambios pueden tomar tiempo, sé paciente</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido de Condiciones de Cartas -->
+                <div id="helpCardConditionsContent" class="help-tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center">
+                            <span class="icon mr-2">🎴</span> Guía de Condiciones de Cartas
+                        </h3>
+                        
+                        <div class="mb-6">
+                            <p class="text-gray-600 dark:text-gray-400 mb-4">En TCGtrade utilizamos el sistema de condiciones de <strong>CardMarket</strong>, el estándar europeo más reconocido para la evaluación de cartas Pokémon TCG.</p>
+                            <div class="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg">
+                                <p class="text-sm text-blue-700 dark:text-blue-300"><strong>💡 Importante:</strong> La condición de una carta es fundamental para determinar su valor y aceptabilidad en intercambios.</p>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 border-b dark:border-gray-600">
+                                    <h4 class="font-semibold text-gray-800 dark:text-gray-200">Condiciones de Mejor a Peor</h4>
+                                </div>
+                                <div class="p-4">
+                                    <div class="space-y-3">
+                                        <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: #10B981;">
+                                            <div class="flex items-center space-x-3">
+                                                <span class="text-2xl">💎</span>
+                                                <div>
+                                                    <h5 class="font-semibold text-white">Mint (M)</h5>
+                                                    <p class="text-green-100 text-sm">Perfectas condiciones, sin excusas</p>
+                                                </div>
+                                            </div>
+                                            <span class="text-white font-medium">M</span>
+                                        </div>
+
+                                        <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: #059669;">
+                                            <div class="flex items-center space-x-3">
+                                                <span class="text-2xl">✨</span>
+                                                <div>
+                                                    <h5 class="font-semibold text-white">Near Mint (NM)</h5>
+                                                    <p class="text-green-100 text-sm">Aspecto de no haber sido jugada sin fundas</p>
+                                                </div>
+                                            </div>
+                                            <span class="text-white font-medium">NM</span>
+                                        </div>
+
+                                        <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: #3B82F6;">
+                                            <div class="flex items-center space-x-3">
+                                                <span class="text-2xl">⭐</span>
+                                                <div>
+                                                    <h5 class="font-semibold text-white">Excellent (EX)</h5>
+                                                    <p class="text-blue-100 text-sm">Como si se hubiera usado poco sin fundas</p>
+                                                </div>
+                                            </div>
+                                            <span class="text-white font-medium">EX</span>
+                                        </div>
+
+                                        <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: #F59E0B;">
+                                            <div class="flex items-center space-x-3">
+                                                <span class="text-2xl">🟡</span>
+                                                <div>
+                                                    <h5 class="font-semibold text-white">Good (GD)</h5>
+                                                    <p class="text-yellow-100 text-sm">Aspecto de mucho uso en torneo sin fundas</p>
+                                                </div>
+                                            </div>
+                                            <span class="text-white font-medium">GD</span>
+                                        </div>
+
+                                        <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: #F97316;">
+                                            <div class="flex items-center space-x-3">
+                                                <span class="text-2xl">🟠</span>
+                                                <div>
+                                                    <h5 class="font-semibold text-white">Light Played (LP)</h5>
+                                                    <p class="text-orange-100 text-sm">Uso prolongado sin fundas, válida para torneos</p>
+                                                </div>
+                                            </div>
+                                            <span class="text-white font-medium">LP</span>
+                                        </div>
+
+                                        <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: #DC2626;">
+                                            <div class="flex items-center space-x-3">
+                                                <span class="text-2xl">🔴</span>
+                                                <div>
+                                                    <h5 class="font-semibold text-white">Played (PL)</h5>
+                                                    <p class="text-red-100 text-sm">Aspecto muy deteriorado, dudoso para torneos</p>
+                                                </div>
+                                            </div>
+                                            <span class="text-white font-medium">PL</span>
+                                        </div>
+
+                                        <div class="flex items-center justify-between p-3 rounded-lg" style="background-color: #7F1D1D;">
+                                            <div class="flex items-center space-x-3">
+                                                <span class="text-2xl">💀</span>
+                                                <div>
+                                                    <h5 class="font-semibold text-white">Poor (PO)</h5>
+                                                    <p class="text-red-100 text-sm">Literalmente destrozada o alterada</p>
+                                                </div>
+                                            </div>
+                                            <span class="text-white font-medium">PO</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-yellow-50 dark:bg-yellow-900/30 p-4 rounded-lg">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">⚠️ Consejos Importantes</h4>
+                                <ul class="text-gray-600 dark:text-gray-400 space-y-2">
+                                    <li><strong>🔍 Inspección detallada:</strong> Examina las cartas bajo buena luz antes de evaluar</li>
+                                    <li><strong>📸 Fotos claras:</strong> Incluye fotos de frente y reverso en tus intercambios</li>
+                                    <li><strong>📋 Descripción honesta:</strong> Sé transparente sobre cualquier defecto</li>
+                                    <li><strong>🎯 Condiciones específicas:</strong> Especifica qué condiciones aceptas en tus intercambios</li>
+                                    <li><strong>🤝 Comunicación:</strong> Si tienes dudas, pregunta antes de intercambiar</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido de Cuenta y Perfil -->
+                <div id="helpAccountContent" class="help-tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center">
+                            <span class="icon mr-2">👤</span> Gestión de Cuenta y Perfil
+                        </h3>
+                        
+                        <div class="space-y-6">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                                    <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">🔐 Seguridad de la Cuenta</h4>
+                                    <ul class="text-gray-600 dark:text-gray-400 space-y-2">
+                                        <li>• Usa una contraseña fuerte y única</li>
+                                        <li>• No compartas tus credenciales</li>
+                                        <li>• Cambia tu contraseña regularmente</li>
+                                        <li>• Activa la verificación en dos pasos si está disponible</li>
+                                    </ul>
+                                </div>
+                                <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                                    <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">📊 Tu Perfil</h4>
+                                    <ul class="text-gray-600 dark:text-gray-400 space-y-2">
+                                        <li>• Mantén tu información actualizada</li>
+                                        <li>• Añade una foto de perfil</li>
+                                        <li>• Completa tu información de contacto</li>
+                                        <li>• Revisa tu historial de intercambios</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-lg">
+                                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">📈 Estadísticas de tu Colección</h4>
+                                <p class="text-gray-600 dark:text-gray-300 mb-3">En tu perfil puedes ver estadísticas detalladas de tu colección:</p>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-blue-600">🎴</div>
+                                        <div class="text-sm text-gray-600">Total de Cartas</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-green-600">📦</div>
+                                        <div class="text-sm text-gray-600">Sets Diferentes</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-purple-600">🤝</div>
+                                        <div class="text-sm text-gray-600">Intercambios</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-orange-600">⭐</div>
+                                        <div class="text-sm text-gray-600">Cartas Únicas</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido de FAQ -->
+                <div id="helpFAQContent" class="help-tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center">
+                            <span class="icon mr-2">❓</span> Preguntas Frecuentes Actualizadas
+                        </h3>
+                        
+                        <div class="space-y-4">
+                            <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <button class="faq-question w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded-lg">
+                                    <div class="flex justify-between items-center">
+                                        <span class="font-semibold text-gray-800 dark:text-gray-200">🚀 ¿Cómo empiezo en TCGtrade?</span>
+                                        <span class="text-gray-500 dark:text-gray-400">+</span>
+                                    </div>
+                                </button>
+                                <div class="faq-answer hidden px-4 py-3 border-t dark:border-gray-700">
+                                    <p class="text-gray-600 dark:text-gray-400">
+                                        1. Regístrate con email y nombre de usuario<br>
+                                        2. Busca cartas y añádelas a tu colección<br>
+                                        3. Crea intercambios o responde a propuestas<br>
+                                        4. Usa el Buzón para gestionar notificaciones<br>
+                                        5. Valora a otros usuarios con Pokéballs
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <button class="faq-question w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded-lg">
+                                    <div class="flex justify-between items-center">
+                                        <span class="font-semibold text-gray-800 dark:text-gray-200">💬 ¿Cómo funciona el sistema de propuestas?</span>
+                                        <span class="text-gray-500 dark:text-gray-400">+</span>
+                                    </div>
+                                </button>
+                                <div class="faq-answer hidden px-4 py-3 border-t dark:border-gray-700">
+                                    <p class="text-gray-600 dark:text-gray-400">
+                                        Ve un intercambio → Click en "Proponer Intercambio" → Ofrece tus cartas → 
+                                        El dueño recibe notificación en su Buzón → Puede aceptar, rechazar o contraoferta → 
+                                        Recibes respuesta en tu Buzón. Todo con imágenes de cartas y detalles completos.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <button class="faq-question w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded-lg">
+                                    <div class="flex justify-between items-center">
+                                        <span class="font-semibold text-gray-800 dark:text-gray-200">🎯 ¿Qué son las valoraciones con Pokéballs?</span>
+                                        <span class="text-gray-500 dark:text-gray-400">+</span>
+                                    </div>
+                                </button>
+                                <div class="faq-answer hidden px-4 py-3 border-t dark:border-gray-700">
+                                    <p class="text-gray-600 dark:text-gray-400">
+                                        Sistema único de valoración: 1⭐ Premier Ball (blanca), 2⭐ Poké Ball (roja), 
+                                        3⭐ Great Ball (azul), 4⭐ Ultra Ball (negra), 5⭐ Master Ball (morada). 
+                                        Las valoraciones aparecen en tu perfil con promedio y reseñas.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <button class="faq-question w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded-lg">
+                                    <div class="flex justify-between items-center">
+                                        <span class="font-semibold text-gray-800 dark:text-gray-200">📚 ¿Cómo añado cartas desde mi colección?</span>
+                                        <span class="text-gray-500 dark:text-gray-400">+</span>
+                                    </div>
+                                </button>
+                                <div class="faq-answer hidden px-4 py-3 border-t dark:border-gray-700">
+                                    <p class="text-gray-600 dark:text-gray-400">
+                                        En crear/modificar intercambio: Click en "📚 Desde Mis Cartas" → 
+                                        Selecciona de tu colección → Las cartas se bloquean automáticamente → 
+                                        Las imágenes y datos se copian. También funciona en propuestas.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <button class="faq-question w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded-lg">
+                                    <div class="flex justify-between items-center">
+                                        <span class="font-semibold text-gray-800 dark:text-gray-200">🔍 ¿Qué es el contador de "Ofrecidas"?</span>
+                                        <span class="text-gray-500 dark:text-gray-400">+</span>
+                                    </div>
+                                </button>
+                                <div class="faq-answer hidden px-4 py-3 border-t dark:border-gray-700">
+                                    <p class="text-gray-600 dark:text-gray-400">
+                                        En búsquedas, verás cuántas personas ofrecen cada carta. 
+                                        Click en el número para ver quién las tiene y qué buscan a cambio. 
+                                        Facilita encontrar intercambios compatibles.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <button class="faq-question w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded-lg">
+                                    <div class="flex justify-between items-center">
+                                        <span class="font-semibold text-gray-800 dark:text-gray-200">🌙 ¿Cómo activo el modo oscuro?</span>
+                                        <span class="text-gray-500 dark:text-gray-400">+</span>
+                                    </div>
+                                </button>
+                                <div class="faq-answer hidden px-4 py-3 border-t dark:border-gray-700">
+                                    <p class="text-gray-600 dark:text-gray-400">
+                                        Usa el botón de modo oscuro en la esquina superior derecha de la navegación (☀️/🌙). 
+                                        Se guarda automáticamente y persiste entre sesiones. 
+                                        Todos los modales y secciones son compatibles con el modo oscuro.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <button class="faq-question w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded-lg">
+                                    <div class="flex justify-between items-center">
+                                        <span class="font-semibold text-gray-800 dark:text-gray-200">📧 ¿Cómo recupero mi contraseña?</span>
+                                        <span class="text-gray-500 dark:text-gray-400">+</span>
+                                    </div>
+                                </button>
+                                <div class="faq-answer hidden px-4 py-3 border-t dark:border-gray-700">
+                                    <p class="text-gray-600 dark:text-gray-400">
+                                        En la pantalla de login → Click en "¿Olvidaste tu contraseña?" → 
+                                        Ingresa tu email → Recibirás un enlace de recuperación. 
+                                        Revisa spam si no llega.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="border border-gray-200 rounded-lg">
+                                <button class="faq-question w-full px-4 py-3 text-left bg-gray-50 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded-lg">
+                                    <div class="flex justify-between items-center">
+                                        <span class="font-semibold text-gray-800">¿Qué hago si tengo un problema con un intercambio?</span>
+                                        <span class="text-gray-500">+</span>
+                                    </div>
+                                </button>
+                                <div class="faq-answer hidden px-4 py-3 border-t">
+                                    <p class="text-gray-600">Primero intenta resolverlo directamente con el otro usuario. Si no es posible, contacta con nuestro soporte técnico usando el botón "Contactar Soporte".</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido de Novedades -->
+                <div id="helpNewFeaturesContent" class="help-tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center">
+                            <span class="icon mr-2">✨</span> Funcionalidades Nuevas de TCGtrade
+                        </h3>
+                        
+                        <div class="space-y-6">
+                            <!-- Sistema de Buzón -->
+                            <div class="bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 p-4 rounded-lg">
+                                <h4 class="text-lg font-bold text-purple-800 dark:text-purple-200 mb-3 flex items-center">
+                                    📨 Sistema de Buzón Completo
+                                </h4>
+                                <ul class="space-y-2 text-gray-700 dark:text-gray-300">
+                                    <li>✅ <strong>Notificaciones:</strong> Recibe alertas de nuevas propuestas y respuestas</li>
+                                    <li>✅ <strong>Propuestas Recibidas:</strong> Gestiona todas las ofertas que recibes</li>
+                                    <li>✅ <strong>Propuestas Enviadas:</strong> Rastrea tus propuestas activas</li>
+                                    <li>✅ <strong>Badge de Notificaciones:</strong> Contador visual en el menú</li>
+                                </ul>
+                            </div>
+
+                            <!-- Sistema de Valoraciones -->
+                            <div class="bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900/30 dark:to-orange-900/30 p-4 rounded-lg">
+                                <h4 class="text-lg font-bold text-yellow-800 dark:text-yellow-200 mb-3 flex items-center">
+                                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/master-ball.png" 
+                                         class="w-6 h-6 mr-2" alt="Master Ball">
+                                    Sistema de Valoraciones con Pokéballs
+                                </h4>
+                                <ul class="space-y-2 text-gray-700 dark:text-gray-300">
+                                    <li>✅ Valora de 1-5 con Pokéballs reales (Premier → Master)</li>
+                                    <li>✅ Pestaña dedicada en el perfil con historial</li>
+                                    <li>✅ Promedio visual con imágenes de Pokéballs</li>
+                                    <li>✅ Reseñas con comentarios y fecha</li>
+                                    <li>✅ Estadísticas detalladas por tipo de Pokéball</li>
+                                </ul>
+                            </div>
+
+                            <!-- Mejoras en Intercambios -->
+                            <div class="bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 p-4 rounded-lg">
+                                <h4 class="text-lg font-bold text-green-800 dark:text-green-200 mb-3 flex items-center">
+                                    🔄 Mejoras en Sistema de Intercambios
+                                </h4>
+                                <ul class="space-y-2 text-gray-700 dark:text-gray-300">
+                                    <li>✅ <strong>Selección desde Mi Colección:</strong> Añade cartas directamente</li>
+                                    <li>✅ <strong>Bloqueo Inteligente:</strong> Campos se bloquean según origen</li>
+                                    <li>✅ <strong>Vista Detallada:</strong> Modal con imágenes grandes y detalles</li>
+                                    <li>✅ <strong>Propuestas con Imágenes:</strong> Todas las cartas muestran sus imágenes</li>
+                                    <li>✅ <strong>Modificación Flexible:</strong> Edita intercambios existentes</li>
+                                </ul>
+                            </div>
+
+                            <!-- Contador de Ofrecidas -->
+                            <div class="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 p-4 rounded-lg">
+                                <h4 class="text-lg font-bold text-blue-800 dark:text-blue-200 mb-3 flex items-center">
+                                    📊 Contador de Cartas Ofrecidas
+                                </h4>
+                                <ul class="space-y-2 text-gray-700 dark:text-gray-300">
+                                    <li>✅ Ve cuántas personas ofrecen cada carta</li>
+                                    <li>✅ Click para ver lista de usuarios</li>
+                                    <li>✅ Descubre qué buscan a cambio</li>
+                                    <li>✅ Encuentra intercambios compatibles rápidamente</li>
+                                </ul>
+                            </div>
+
+                            <!-- Mejoras de UX -->
+                            <div class="bg-gradient-to-r from-gray-100 to-slate-100 dark:from-gray-900/30 dark:to-slate-900/30 p-4 rounded-lg">
+                                <h4 class="text-lg font-bold text-gray-800 dark:text-gray-200 mb-3 flex items-center">
+                                    🎨 Mejoras de Experiencia de Usuario
+                                </h4>
+                                <ul class="space-y-2 text-gray-700 dark:text-gray-300">
+                                    <li>✅ <strong>Modo Oscuro Persistente:</strong> Se mantiene entre sesiones</li>
+                                    <li>✅ <strong>Recuperación de Contraseña:</strong> Por email con enlace</li>
+                                    <li>✅ <strong>Enter para Login:</strong> Presiona Enter para iniciar sesión</li>
+                                    <li>✅ <strong>Notificaciones Personalizadas:</strong> Diseño moderno sin alerts</li>
+                                    <li>✅ <strong>Idiomas Adicionales:</strong> Chino y Coreano disponibles</li>
+                                    <li>✅ <strong>Condición Mint:</strong> Añadida a todas las selecciones</li>
+                                </ul>
+                            </div>
+
+                            <!-- Seguridad -->
+                            <div class="bg-gradient-to-r from-red-100 to-rose-100 dark:from-red-900/30 dark:to-rose-900/30 p-4 rounded-lg">
+                                <h4 class="text-lg font-bold text-red-800 dark:text-red-200 mb-3 flex items-center">
+                                    🔒 Mejoras de Seguridad
+                                </h4>
+                                <ul class="space-y-2 text-gray-700 dark:text-gray-300">
+                                    <li>✅ Solo puedes modificar tus propios intercambios</li>
+                                    <li>✅ Validación de propietario en todas las acciones</li>
+                                    <li>✅ Logout limpia todos los datos sensibles</li>
+                                    <li>✅ Nombres de usuario únicos y bloqueados</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="mt-8 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg">
+                            <p class="text-center text-gray-700 dark:text-gray-300">
+                                <strong>🚀 TCGtrade evoluciona constantemente</strong><br>
+                                <span class="text-sm">Estas funcionalidades han sido añadidas recientemente para mejorar tu experiencia</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="interchangesSection" class="mb-12 hidden">
+            <div class="max-w-7xl mx-auto">
+                <!-- Header de Intercambios -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6">
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div>
+                            <h2 class="text-3xl font-bold text-gray-800 dark:text-white mb-2 flex items-center">
+                                <span class="icon mr-3">🤝</span> Intercambios
+                            </h2>
+                            <p class="text-gray-600 dark:text-gray-300">Gestiona tus intercambios de cartas y encuentra nuevos coleccionistas</p>
+                        </div>
+                        <div class="flex space-x-3">
+                            <button id="createTradeBtn" class="btn-primary px-6 py-3 rounded-lg text-sm font-semibold flex items-center">
+                                <span class="icon mr-2">➕</span> Crear Intercambio
+                            </button>
+                            <button id="findTradesBtn" class="btn-secondary px-6 py-3 rounded-lg text-sm font-semibold flex items-center">
+                                <span class="icon mr-2">🔍</span> Buscar Intercambios
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabs de Intercambios -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg mb-6">
+                    <div class="border-b border-gray-200 dark:border-gray-700">
+                        <nav class="flex space-x-8 px-6" aria-label="Tabs">
+                            <button id="tradesActiveTab" class="trade-tab active py-4 px-1 border-b-2 border-orange-500 text-orange-600 font-medium text-sm">
+                                🔄 Activos
+                            </button>
+                            <button id="tradesPendingTab" class="trade-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                ⏳ Pendientes
+                            </button>
+                            <button id="tradesCompletedTab" class="trade-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                ✅ Completados
+                            </button>
+                            <button id="tradesReceivedTab" class="trade-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                📥 Recibidos
+                            </button>
+                        </nav>
+                    </div>
+                </div>
+
+                <!-- Contenido de Intercambios Activos -->
+                <div id="tradesActiveContent" class="trade-tab-content">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Intercambios que he creado -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                                <span class="icon mr-2">📤</span> Mis Ofertas
+                            </h3>
+                            <div id="myTradesContainer" class="space-y-4">
+                                <!-- Los intercambios se cargarán dinámicamente aquí -->
+                                <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                                    <p>No tienes intercambios activos</p>
+                                    <button id="createFirstTradeBtn" class="btn-primary mt-4 px-4 py-2 rounded-lg text-sm font-semibold">
+                                        Crear mi primer intercambio
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Intercambios disponibles -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                                <span class="icon mr-2">🎯</span> Intercambios Disponibles
+                            </h3>
+                            <div id="availableTradesContainer" class="space-y-4">
+                                <!-- Los intercambios disponibles se cargarán dinámicamente aquí -->
+                                <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                                    <p>No hay intercambios disponibles en este momento</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido de Intercambios Pendientes -->
+                <div id="tradesPendingContent" class="trade-tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                            <span class="icon mr-2">⏳</span> Intercambios Pendientes
+                        </h3>
+                        <div id="pendingTradesContainer" class="space-y-4">
+                            <!-- Los intercambios pendientes se cargarán dinámicamente aquí -->
+                            <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                                <p>No tienes intercambios pendientes</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido de Intercambios Completados -->
+                <div id="tradesCompletedContent" class="trade-tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                            <span class="icon mr-2">✅</span> Intercambios Completados
+                        </h3>
+                        <div id="completedTradesContainer" class="space-y-4">
+                            <!-- Los intercambios completados se cargarán dinámicamente aquí -->
+                            <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                                <p>No tienes intercambios completados</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido de Intercambios Recibidos -->
+                <div id="tradesReceivedContent" class="trade-tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                            <span class="icon mr-2">📥</span> Intercambios Recibidos
+                        </h3>
+                        <div id="receivedTradesContainer" class="space-y-4">
+                            <!-- Los intercambios recibidos se cargarán dinámicamente aquí -->
+                            <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                                <p>No has recibido propuestas de intercambio</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección Mi Perfil -->
+        <section id="profileSection" class="mb-12 hidden">
+            <div class="max-w-6xl mx-auto">
+                <!-- Header del Perfil -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6">
+                    <div class="flex flex-col md:flex-row items-start md:items-center gap-6">
+                        <!-- Avatar del Usuario -->
+                        <div class="flex-shrink-0">
+                            <div class="w-20 h-20 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
+                                👤
+                            </div>
+                        </div>
+                        
+                        <!-- Información del Usuario -->
+                        <div class="flex-1">
+                            <h1 class="text-2xl font-bold text-gray-800 dark:text-white mb-2" id="profileUserName">Usuario</h1>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">Miembro desde <span id="profileJoinDate">Enero 2024</span></p>
+                        </div>
+                        
+
+                    </div>
+                </div>
+
+                <!-- Tabs de Navegación -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg mb-6">
+                    <div class="border-b border-gray-200">
+                        <nav class="flex space-x-8 px-6" aria-label="Tabs">
+                            <button id="profilePersonalTab" class="profile-tab active py-4 px-1 border-b-2 border-orange-500 text-orange-600 font-medium text-sm">
+                                👤 Mi Perfil
+                            </button>
+                            <button id="profileDashboardTab" class="profile-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                📊 Dashboard
+                            </button>
+                            <button id="profileCollectionTab" class="profile-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                🎴 Mi Colección
+                            </button>
+                            <button id="profileTradesTab" class="profile-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                🤝 Mis Intercambios
+                            </button>
+                            <button id="profileSettingsTab" class="profile-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                ⚙️ Configuración
+                            </button>
+                            <button id="profileRatingsTab" class="profile-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                🏆 Valoraciones
+                            </button>
+                        </nav>
+                    </div>
+                </div>
+
+                <!-- Contenido de Mi Perfil -->
+                <div id="profilePersonalContent" class="profile-tab-content">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center">
+                            <span class="icon mr-2">👤</span> Información Personal
+                        </h3>
+                        
+                        <form id="profilePersonalForm" class="space-y-6">
+                            <!-- Usuario (solo lectura) -->
+                            <div>
+                                <label for="profileUsername" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+                                    Nombre de Usuario
+                                </label>
+                                <input type="text" id="profileUsername" name="username" 
+                                       class="shadow appearance-none border dark:border-gray-600 rounded w-full py-3 px-4 text-gray-600 dark:text-gray-400 leading-tight bg-gray-100 dark:bg-gray-800 cursor-not-allowed"
+                                       placeholder="usuario123" readonly>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">El nombre de usuario no se puede modificar</p>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- Nombre -->
+                                <div>
+                                    <label for="profileName" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+                                        Nombre *
+                                    </label>
+                                    <input type="text" id="profileName" name="name" 
+                                           class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400"
+                                           placeholder="Tu nombre">
+                                </div>
+                                
+                                <!-- Apellidos -->
+                                <div>
+                                    <label for="profileLastName" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+                                        Apellidos *
+                                    </label>
+                                    <input type="text" id="profileLastName" name="lastName" 
+                                           class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400"
+                                           placeholder="Tus apellidos">
+                                </div>
+                            </div>
+                            
+                            <!-- Dirección -->
+                            <div>
+                                <label for="profileAddress" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+                                    Dirección
+                                </label>
+                                <input type="text" id="profileAddress" name="address" 
+                                       class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400"
+                                       placeholder="Tu dirección completa">
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- Fecha de Nacimiento -->
+                                <div>
+                                    <label for="profileBirthDate" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+                                        Fecha de Nacimiento
+                                    </label>
+                                    <input type="date" id="profileBirthDate" name="birthDate" 
+                                           class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400">
+                                </div>
+                                
+                                <!-- Correo Electrónico -->
+                                <div>
+                                    <label for="profileEmail" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+                                        Correo Electrónico *
+                                    </label>
+                                    <input type="email" id="profileEmail" name="email" 
+                                           class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400"
+                                           placeholder="tu@email.com">
+                                </div>
+                            </div>
+                            
+                            <!-- Botones -->
+                            <div class="flex justify-end space-x-4 pt-4">
+                                <button type="button" id="cancelProfileBtn" class="btn-secondary px-6 py-2 rounded-lg text-sm font-semibold">
+                                    Cancelar
+                                </button>
+                                <button type="submit" id="saveProfileBtn" class="btn-primary px-6 py-2 rounded-lg text-sm font-semibold">
+                                    💾 Guardar Cambios
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <!-- Mensaje de estado -->
+                        <div id="profileSaveMessage" class="mt-4 p-3 rounded-lg hidden">
+                            <p class="text-sm"></p>
+                        </div>
+                        
+
+                    </div>
+                </div>
+
+                <!-- Contenido del Dashboard -->
+                <div id="profileDashboardContent" class="profile-tab-content hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+                        <!-- Estadística: Total de Cartas -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border-l-4 border-blue-500 stats-card">
+                            <div class="flex items-center h-full">
+                                <div class="flex-shrink-0">
+                                    <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                                        <span class="text-2xl">🎴</span>
+                                    </div>
+                                </div>
+                                <div class="ml-4 flex-1">
+                                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total de Cartas</p>
+                                    <p class="text-2xl font-bold text-gray-900 dark:text-white" id="totalCardsCount">0</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Estadística: Cartas por Sets -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border-l-4 border-green-500 stats-card">
+                            <div class="flex items-center h-full">
+                                <div class="flex-shrink-0">
+                                    <div class="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                                        <span class="text-2xl">📦</span>
+                                    </div>
+                                </div>
+                                <div class="ml-4 flex-1">
+                                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Sets Diferentes</p>
+                                    <p class="text-2xl font-bold text-gray-900 dark:text-white" id="uniqueSetsCount">0</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Estadística: Intercambios Completados -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border-l-4 border-purple-500 stats-card">
+                            <div class="flex items-center h-full">
+                                <div class="flex-shrink-0">
+                                    <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                                        <span class="text-2xl">🤝</span>
+                                    </div>
+                                </div>
+                                <div class="ml-4 flex-1">
+                                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Intercambios</p>
+                                    <p class="text-2xl font-bold text-gray-900 dark:text-white" id="completedTradesCount">0</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Estadística: Cartas Únicas -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border-l-4 border-orange-500 stats-card">
+                            <div class="flex items-center h-full">
+                                <div class="flex-shrink-0">
+                                    <div class="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
+                                        <span class="text-2xl">⭐</span>
+                                    </div>
+                                </div>
+                                <div class="ml-4 flex-1">
+                                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Cartas Únicas</p>
+                                    <p class="text-2xl font-bold text-gray-900 dark:text-white" id="uniqueCardsCount">0</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Estadística: Valor Total de la Colección -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border-l-4 border-emerald-500 stats-card">
+                            <div class="flex items-center h-full">
+                                <div class="flex-shrink-0">
+                                    <div class="w-12 h-12 bg-emerald-100 dark:bg-emerald-900 rounded-lg flex items-center justify-center">
+                                        <span class="text-2xl">💰</span>
+                                    </div>
+                                </div>
+                                <div class="ml-4 flex-1">
+                                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Valor Total</p>
+                                    <p class="text-2xl font-bold text-gray-900 dark:text-white" id="totalCollectionValue">€0.00</p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400" id="valueEstimateNote">Estimado</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Desglose por Sets -->
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                            <span class="icon mr-2">📊</span> Desglose por Sets
+                        </h3>
+                        <div id="setsBreakdown" class="space-y-4">
+                            <!-- Los sets se cargarán dinámicamente aquí -->
+                            <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                                <p>No hay datos de sets disponibles</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido de Mi Colección (oculto por defecto) -->
+                <div id="profileCollectionContent" class="profile-tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white">🎴 Mi Colección</h3>
+                            <button onclick="showBulkAddModal()" class="btn-primary px-4 py-2 rounded text-sm">
+                                ➕ Agregar por Set
+                            </button>
+                        </div>
+                        <p id="myCardsStatus" class="text-gray-600 dark:text-gray-300 mb-4"></p>
+                        <div id="myCardsGrid" class="space-y-1 border rounded-lg bg-white">
+                            <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                                <p>No hay cartas en tu colección</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido de Mis Intercambios (oculto por defecto) -->
+                <div id="profileTradesContent" class="profile-tab-content hidden">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4">🤝 Mis Intercambios</h3>
+                        <p class="text-gray-600 dark:text-gray-300">Aquí podrás ver el historial de tus intercambios.</p>
+                    </div>
+                </div>
+
+                <!-- Contenido de Configuración (oculto por defecto) -->
+                <div id="profileSettingsContent" class="profile-tab-content hidden">
+                    <div class="space-y-6">
+                        <!-- Sección de Seguridad -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center">
+                                <span class="icon mr-2">🔒</span> Seguridad
+                            </h3>
+                            
+                            <form id="passwordChangeForm" class="space-y-6">
+                                <div class="mb-4">
+                                    <label for="currentPassword" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+                                        Contraseña Actual *
+                                    </label>
+                                    <input type="password" id="currentPassword" name="currentPassword" 
+                                           class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400"
+                                           placeholder="Tu contraseña actual" required>
+                                </div>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label for="newPassword" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+                                            Nueva Contraseña *
+                                        </label>
+                                        <input type="password" id="newPassword" name="newPassword" 
+                                               class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400"
+                                               placeholder="Nueva contraseña" required>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-400 mt-1">Mínimo 6 caracteres</p>
+                                    </div>
+                                    
+                                    <div>
+                                        <label for="confirmNewPassword" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">
+                                            Confirmar Nueva Contraseña *
+                                        </label>
+                                        <input type="password" id="confirmNewPassword" name="confirmNewPassword" 
+                                               class="shadow appearance-none border rounded w-full py-3 px-4 text-gray-700 dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400"
+                                               placeholder="Confirmar nueva contraseña" required>
+                                    </div>
+                                </div>
+                                
+                                <!-- Botones -->
+                                <div class="flex justify-end space-x-4 pt-4">
+                                    <button type="button" id="cancelPasswordBtn" class="btn-secondary px-6 py-2 rounded-lg text-sm font-semibold">
+                                        Cancelar
+                                    </button>
+                                    <button type="submit" id="savePasswordBtn" class="btn-primary px-6 py-2 rounded-lg text-sm font-semibold">
+                                        🔐 Cambiar Contraseña
+                                    </button>
+                                </div>
+                            </form>
+                            
+                            <!-- Mensaje de estado -->
+                            <div id="passwordChangeMessage" class="mt-4 p-3 rounded-lg hidden">
+                                <p class="text-sm"></p>
+                            </div>
+                            
+
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Contenido de Valoraciones (oculto por defecto) -->
+                <div id="profileRatingsContent" class="profile-tab-content hidden">
+                    <div class="space-y-6">
+                        <!-- Resumen de Valoración -->
+                        <div class="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl shadow-lg p-6 text-white">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-2xl font-bold mb-3">🏆 Tu Valoración</h3>
+                                    <div class="flex items-center gap-4">
+                                        <div class="text-3xl" id="userRatingDisplay">
+                                            <!-- Se llenará con JavaScript -->
+                                        </div>
+                                        <div id="userRatingStats">
+                                            <!-- Se llenará con JavaScript -->
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-6xl opacity-20">
+                                    🏆
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Historial de Valoraciones -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center justify-between">
+                                <span class="flex items-center">
+                                    <span class="icon mr-2">📝</span> 
+                                    Reseñas Recibidas
+                                </span>
+                                <button onclick="refreshRatings()" 
+                                        class="px-3 py-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm">
+                                    🔄 Actualizar
+                                </button>
+                            </h3>
+                            
+                            <div id="ratingsHistoryContainer" class="space-y-4">
+                                <!-- Las valoraciones se cargarán aquí -->
+                            </div>
+                        </div>
+                        
+                        <!-- Estadísticas de Valoraciones -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center">
+                                <span class="icon mr-2">📊</span> 
+                                Estadísticas
+                            </h3>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                                <!-- Distribución por Pokéballs -->
+                                <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:shadow-lg transition-shadow">
+                                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/master-ball.png" 
+                                         alt="Master Ball" 
+                                         class="w-12 h-12 mx-auto mb-2">
+                                    <div class="text-sm font-semibold text-gray-700 dark:text-gray-300">Master Ball</div>
+                                    <div class="text-xl font-bold text-purple-600 dark:text-purple-400" id="masterBallCount">0</div>
+                                </div>
+                                <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:shadow-lg transition-shadow">
+                                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/ultra-ball.png" 
+                                         alt="Ultra Ball" 
+                                         class="w-12 h-12 mx-auto mb-2">
+                                    <div class="text-sm font-semibold text-gray-700 dark:text-gray-300">Ultra Ball</div>
+                                    <div class="text-xl font-bold text-gray-800 dark:text-gray-200" id="ultraBallCount">0</div>
+                                </div>
+                                <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:shadow-lg transition-shadow">
+                                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/great-ball.png" 
+                                         alt="Great Ball" 
+                                         class="w-12 h-12 mx-auto mb-2">
+                                    <div class="text-sm font-semibold text-gray-700 dark:text-gray-300">Great Ball</div>
+                                    <div class="text-xl font-bold text-blue-600 dark:text-blue-400" id="greatBallCount">0</div>
+                                </div>
+                                <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:shadow-lg transition-shadow">
+                                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png" 
+                                         alt="Poké Ball" 
+                                         class="w-12 h-12 mx-auto mb-2">
+                                    <div class="text-sm font-semibold text-gray-700 dark:text-gray-300">Poké Ball</div>
+                                    <div class="text-xl font-bold text-red-600 dark:text-red-400" id="pokeBallCount">0</div>
+                                </div>
+                                <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:shadow-lg transition-shadow">
+                                    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/premier-ball.png" 
+                                         alt="Premier Ball" 
+                                         class="w-12 h-12 mx-auto mb-2">
+                                    <div class="text-sm font-semibold text-gray-700 dark:text-gray-300">Premier Ball</div>
+                                    <div class="text-xl font-bold text-gray-600 dark:text-gray-400" id="premierBallCount">0</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="authModal" class="auth-modal-overlay">
+        <div class="auth-modal-content">
+            <span class="auth-modal-close" id="closeAuthModalBtn">&times;</span>
+
+            <div id="loginForm">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Iniciar Sesión</h2>
+                <div class="mb-4">
+                    <label for="loginEmail" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">Correo Electrónico:</label>
+                    <input type="email" id="loginEmail" class="shadow appearance-none border dark:border-gray-600 rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400" required>
+                </div>
+                <div class="mb-4">
+                    <label for="loginPassword" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">Contraseña:</label>
+                    <input type="password" id="loginPassword" class="shadow appearance-none border dark:border-gray-600 rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400" required>
+                    <div class="text-right mt-1">
+                        <a class="auth-form-toggle text-xs text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300" id="toggleToForgotPassword">
+                            ¿Olvidaste tu contraseña?
+                        </a>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <button id="loginBtn" class="btn-primary px-4 py-2 rounded focus:outline-none focus:shadow-outline" type="button">
+                        Iniciar Sesión
+                    </button>
+                    <a class="auth-form-toggle text-sm" id="toggleToRegister">
+                        ¿No tienes cuenta? Regístrate
+                    </a>
+                </div>
+                <p id="loginError" class="text-red-500 text-xs italic mt-4 hidden">Error al iniciar sesión.</p>
+            </div>
+
+            <div id="forgotPasswordForm" class="hidden">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Recuperar Contraseña</h2>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Ingresa tu correo electrónico y te enviaremos un enlace para restablecer tu contraseña.
+                </p>
+                <div class="mb-4">
+                    <label for="resetEmail" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">Correo Electrónico:</label>
+                    <input type="email" id="resetEmail" class="shadow appearance-none border dark:border-gray-600 rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400" required placeholder="tu@email.com">
+                </div>
+                <div class="flex items-center justify-between">
+                    <button id="resetPasswordBtn" class="btn-primary px-3 py-1.5 text-sm rounded focus:outline-none focus:shadow-outline" type="button">
+                        📧 Enviar Email
+                    </button>
+                    <a class="auth-form-toggle text-sm" id="backToLogin">
+                        Volver a Iniciar Sesión
+                    </a>
+                </div>
+                <div id="resetPasswordError" class="text-red-500 text-xs mt-4 hidden p-3 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800"></div>
+                <div id="resetPasswordSuccess" class="text-green-600 dark:text-green-400 text-xs mt-4 hidden p-3 bg-green-50 dark:bg-green-900/20 rounded border border-green-200 dark:border-green-800"></div>
+            </div>
+
+            <div id="registerForm" class="hidden">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Registrarse</h2>
+                <div class="mb-4">
+                    <label for="registerUsername" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">Nombre de Usuario *:</label>
+                    <input type="text" id="registerUsername" class="shadow appearance-none border dark:border-gray-600 rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400" required placeholder="usuario123">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Este será tu nombre único en la plataforma</p>
+                </div>
+                <div class="mb-4">
+                    <label for="registerEmail" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">Correo Electrónico:</label>
+                    <input type="email" id="registerEmail" class="shadow appearance-none border dark:border-gray-600 rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400" required>
+                </div>
+                <div class="mb-4">
+                    <label for="registerPassword" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">Contraseña:</label>
+                    <input type="password" id="registerPassword" class="shadow appearance-none border dark:border-gray-600 rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400" required>
+                </div>
+                <div class="mb-6">
+                    <label for="confirmPassword" class="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2">Confirmar Contraseña:</label>
+                    <input type="password" id="confirmPassword" class="shadow appearance-none border dark:border-gray-600 rounded w-full py-2 px-3 text-gray-700 dark:text-gray-200 dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:ring-2 focus:ring-orange-400" required>
+                </div>
+                <div class="flex items-center justify-between">
+                    <button id="registerBtn" class="btn-primary px-4 py-2 rounded focus:outline-none focus:shadow-outline" type="button">
+                        Registrarse
+                    </button>
+                    <a class="auth-form-toggle text-sm" id="toggleToLogin">
+                        ¿Ya tienes cuenta? Inicia sesión
+                    </a>
+                </div>
+                <p id="registerError" class="text-red-500 text-xs italic mt-4 hidden">Error al registrarse.</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer-bg text-white py-12 px-6 md:px-10">
+        <div class="container mx-auto">
+            <!-- Sección principal del footer -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                <!-- Logo y descripción -->
+                <div class="text-center md:text-left">
+                    <h3 class="text-2xl font-bold mb-4 flex items-center justify-center md:justify-start">
+                        <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png" 
+                             alt="Pokéball" class="w-8 h-8 mr-2">
+                        TCGtrade
+                    </h3>
+                    <p class="text-gray-300 text-sm">
+                        La plataforma líder para intercambiar cartas Pokémon TCG de forma segura y confiable.
+                    </p>
+                </div>
+                
+                <!-- Enlaces legales -->
+                <div class="text-center">
+                    <h4 class="font-semibold mb-4">Legal</h4>
+                    <ul class="space-y-2">
+                        <li>
+                            <a href="#" class="text-gray-300 hover:text-orange-400 transition-colors text-sm">
+                                Política de Privacidad
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-gray-300 hover:text-orange-400 transition-colors text-sm">
+                                Términos y Condiciones
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-gray-300 hover:text-orange-400 transition-colors text-sm">
+                                Política de Cookies
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-gray-300 hover:text-orange-400 transition-colors text-sm">
+                                Aviso Legal
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <!-- Redes sociales -->
+                <div class="text-center md:text-right">
+                    <h4 class="font-semibold mb-4">Síguenos</h4>
+                    <div class="flex justify-center md:justify-end space-x-4">
+                        <!-- Twitter/X -->
+                        <a href="#" class="text-gray-300 hover:text-orange-400 transition-colors">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                            </svg>
+                        </a>
+                        
+                        <!-- Facebook -->
+                        <a href="#" class="text-gray-300 hover:text-orange-400 transition-colors">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                            </svg>
+                        </a>
+                        
+                        <!-- Instagram -->
+                        <a href="#" class="text-gray-300 hover:text-orange-400 transition-colors">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zM5.838 12a6.162 6.162 0 1 1 12.324 0 6.162 6.162 0 0 1-12.324 0zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm4.965-10.405a1.44 1.44 0 1 1 2.881.001 1.44 1.44 0 0 1-2.881-.001z"/>
+                            </svg>
+                        </a>
+                        
+                        <!-- TikTok -->
+                        <a href="#" class="text-gray-300 hover:text-orange-400 transition-colors">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Separador -->
+            <div class="border-t border-gray-700 pt-8">
+                <div class="text-center">
+                    <p data-i18n="footer.copyright">&copy; 2024 TCGtrade. Todos los derechos reservados.</p>
+                    <p class="text-sm mt-2 text-gray-400" data-i18n="footer.tagline">
+                        Conectando coleccionistas de Pokémon TCG en todo el mundo.
+                    </p>
+                    <p class="text-xs mt-4 text-gray-500">
+                        Pokémon y todas las marcas relacionadas son propiedad de Nintendo, The Pokémon Company y Game Freak.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+
+
+
+    <!-- Scripts globales fuera del módulo ES6 -->
+    <script>
+        // Función para iniciar sincronización de datos
+        async function startDataSync() {
+            if (!dataSync || !window.currentUser) {
+                console.log('⚠️ No se puede iniciar sincronización: dataSync o usuario no disponible');
+                return;
+            }
+
+            try {
+                console.log('🔄 Iniciando sincronización en tiempo real...');
+                
+                // Sincronizar colección personal
+                await dataSync.syncUserCollection((cards) => {
+                    console.log('📦 Colección sincronizada:', cards.length, 'cartas');
+                    window.userCardsCache = cards;
+                    
+                    // Actualizar UI si está abierta la sección de colección
+                    if (document.getElementById('myCardsSection') && !document.getElementById('myCardsSection').classList.contains('hidden')) {
+                        loadMyCollection(window.currentUser.uid);
+                    }
+                });
+                
+                // Sincronizar intercambios
+                await dataSync.syncUserTrades((trades) => {
+                    console.log('🔄 Intercambios sincronizados:', trades.length, 'intercambios');
+                    
+                    // Actualizar UI si está abierta la sección de intercambios
+                    if (document.getElementById('interchangesSection') && !document.getElementById('interchangesSection').classList.contains('hidden')) {
+                        loadAvailableTrades();
+                    }
+                });
+                
+                // Sincronizar valoraciones
+                await dataSync.syncUserRatings((ratings) => {
+                    console.log('⭐ Valoraciones sincronizadas:', ratings.length, 'valoraciones');
+                });
+                
+                console.log('✅ Sincronización en tiempo real iniciada');
+                
+            } catch (error) {
+                console.error('❌ Error al iniciar sincronización:', error);
+            }
+        }
+
+        // Inicializar búsqueda avanzada
+        async function initAdvancedSearch() {
+            try {
+                console.log('🔍 Inicializando búsqueda avanzada...');
+                
+                // Verificar que el módulo esté disponible
+                if (typeof AdvancedSearch === 'undefined') {
+                    console.error('❌ Módulo AdvancedSearch no está disponible');
+                    return;
+                }
+                
+                advancedSearch = new AdvancedSearch();
+                window.advancedSearch = advancedSearch;
+                
+                // Cargar opciones de filtros
+                await loadFilterOptions();
+                
+                console.log('✅ Búsqueda avanzada inicializada');
+            } catch (error) {
+                console.error('❌ Error inicializando búsqueda avanzada:', error);
+                // No bloquear la aplicación si falla la búsqueda avanzada
+            }
+        }
+
+        // Cargar opciones de filtros
+        async function loadFilterOptions() {
+            if (!advancedSearch) return;
+            
+            try {
+                const options = await advancedSearch.getFilterOptions();
+                
+                // Cargar series
+                const seriesSelect = document.getElementById('filterSeries');
+                if (seriesSelect) {
+                    seriesSelect.innerHTML = '<option value="">Todas las series</option>';
+                    options.series.forEach(series => {
+                        const option = document.createElement('option');
+                        option.value = series.value;
+                        option.textContent = `${series.label} (${series.count})`;
+                        seriesSelect.appendChild(option);
+                    });
+                }
+                
+                // Cargar sets
+                const setSelect = document.getElementById('filterSet');
+                if (setSelect) {
+                    setSelect.innerHTML = '<option value="">Todos los sets</option>';
+                    options.sets.forEach(set => {
+                        const option = document.createElement('option');
+                        option.value = set.value;
+                        option.textContent = `${set.label} (${set.count})`;
+                        setSelect.appendChild(option);
+                    });
+                }
+                
+                // Cargar rarezas
+                const raritySelect = document.getElementById('filterRarity');
+                if (raritySelect) {
+                    raritySelect.innerHTML = '<option value="">Todas las rarezas</option>';
+                    options.rarities.forEach(rarity => {
+                        const option = document.createElement('option');
+                        option.value = rarity.value;
+                        option.textContent = `${rarity.label} (${rarity.count})`;
+                        raritySelect.appendChild(option);
+                    });
+                }
+                
+                // Cargar tipos
+                const typeSelect = document.getElementById('filterType');
+                if (typeSelect) {
+                    typeSelect.innerHTML = '<option value="">Todos los tipos</option>';
+                    options.types.forEach(type => {
+                        const option = document.createElement('option');
+                        option.value = type.value;
+                        option.textContent = `${type.label} (${type.count})`;
+                        typeSelect.appendChild(option);
+                    });
+                }
+                
+                // Cargar subtipos
+                const subtypeSelect = document.getElementById('filterSubtype');
+                if (subtypeSelect) {
+                    subtypeSelect.innerHTML = '<option value="">Todos los subtipos</option>';
+                    options.subtypes.forEach(subtype => {
+                        const option = document.createElement('option');
+                        option.value = subtype.value;
+                        option.textContent = `${subtype.label} (${subtype.count})`;
+                        subtypeSelect.appendChild(option);
+                    });
+                }
+                
+                // Cargar idiomas
+                const languageSelect = document.getElementById('filterLanguage');
+                if (languageSelect) {
+                    languageSelect.innerHTML = '<option value="">Todos los idiomas</option>';
+                    options.languages.forEach(language => {
+                        const option = document.createElement('option');
+                        option.value = language.value;
+                        option.textContent = `${language.label} (${language.count})`;
+                        languageSelect.appendChild(option);
+                    });
+                }
+                
+                console.log('✅ Opciones de filtros cargadas');
+            } catch (error) {
+                console.error('❌ Error cargando opciones de filtros:', error);
+            }
+        }
+
+
+
+
+        // Función de prueba para mostrar resultados manualmente
+        function testShowResults() {
+            console.log('🧪 Función de prueba ejecutándose...');
+            const searchSection = document.getElementById('searchResults');
+            if (searchSection) {
+                searchSection.classList.remove('hidden');
+                searchSection.style.display = 'block';
+                searchSection.style.visibility = 'visible';
+                searchSection.style.opacity = '1';
+                console.log('✅ Sección forzada a ser visible');
+                
+                // Ocultar hero section
+                if (heroSection) {
+                    heroSection.classList.add('hidden');
+                    console.log('✅ Hero section ocultado');
+                }
+            } else {
+                console.error('❌ No se encontró la sección searchResults');
+            }
+        }
+
+        // Hacer funciones disponibles globalmente
+        window.testShowResults = testShowResults;
+
+        console.log('🚀 Script principal iniciado correctamente');
+        
+        // Función de prueba de API (removida - ya no se necesita)
+
+        // Función de búsqueda rápida
+        window.quickSearch = async () => {
+            const searchInput = document.getElementById('searchInput');
+            const query = searchInput.value.trim();
+            
+            if (query.length > 0 && query.length < 2) {
+                alert('Por favor, escribe al menos 2 caracteres para buscar.');
+                return;
+            }
+            
+            console.log('🚀 Búsqueda rápida iniciada para:', query);
+            
+            try {
+                const encodedQuery = encodeURIComponent(query.toLowerCase());
+                const quickUrl = `https://tcgtrade-production.up.railway.app/api/pokemontcg/cards?q=${encodedQuery}&pageSize=10`;
+                
+                console.log('🚀 Quick URL:', quickUrl);
+                
+                const response = await fetch(quickUrl, {
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const cards = data.data || [];
+                    console.log('✅ Cartas encontradas:', cards.length);
+                    alert(`✅ Encontradas ${cards.length} cartas para "${query}"`);
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error('❌ Error en búsqueda:', error);
+                alert(`❌ Error en búsqueda: ${error.message}`);
+            }
+        };
+
+        console.log('🚀 Funciones globales cargadas');
+    </script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+{
+  "rules": {
+    "chats": {
+      // Permitir leer la lista de chats si estás autenticado
+      ".read": "auth != null",
+      
+      "$chatId": {
+        // Permitir leer el chat específico si estás autenticado
+        ".read": "auth != null",
+        // Permitir escribir si estás autenticado
+        ".write": "auth != null",
+        
+        "metadata": {
+          ".validate": "newData.hasChildren(['participants', 'createdAt'])",
+          
+          "participants": {
+            "$userId": {
+              // Solo puedes añadirte a ti mismo o modificar tu propia entrada
+              ".write": "$userId === auth.uid || !data.exists()",
+              ".validate": "newData.hasChildren(['uid', 'email'])"
+            }
+          },
+          
+          "lastMessage": {
+            ".write": "auth != null"
+          },
+          
+          "lastMessageTime": {
+            ".write": "auth != null"
+          },
+          
+          "lastMessageSender": {
+            ".write": "auth != null"
+          }
+        },
+        
+        "messages": {
+          "$messageId": {
+            // Cualquier usuario autenticado puede escribir mensajes
+            ".write": "auth != null",
+            // Validar que el mensaje tiene los campos requeridos
+            ".validate": "newData.hasChildren(['senderId', 'message', 'timestamp']) && newData.child('senderId').val() === auth.uid"
+          }
+        },
+        
+        "typing": {
+          "$userId": {
+            // Solo puedes modificar tu propio estado de escritura
+            ".write": "$userId === auth.uid",
+            ".validate": "newData.isBoolean()"
+          }
+        }
+      }
+    },
+    
+    "userChats": {
+      "$userId": {
+        ".read": "$userId === auth.uid",
+        ".write": "$userId === auth.uid"
+      }
+    },
+    
+    "notifications": {
+      "$userId": {
+        ".read": "$userId === auth.uid",
+        ".write": "auth != null",
+        
+        "$notificationId": {
+          ".validate": "newData.hasChildren(['type', 'timestamp', 'read'])"
+        }
+      }
+    },
+    
+    "test": {
+      // Nodo de prueba para verificar conexión
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}

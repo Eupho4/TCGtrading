@@ -1,0 +1,9 @@
+<svg width="200" height="280" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="280" fill="#f0f0f0" stroke="#ddd" stroke-width="2" rx="10"/>
+  <text x="100" y="140" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" fill="#999">
+    🎴
+  </text>
+  <text x="100" y="165" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#999">
+    Sin imagen
+  </text>
+</svg>

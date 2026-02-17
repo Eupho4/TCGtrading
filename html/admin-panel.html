@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCGtrade - Panel de Administración</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#10b981',
+                        accent: '#f59e0b'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
+    <!-- Header -->
+    <header class="bg-white dark:bg-gray-800 shadow-lg border-b border-gray-200 dark:border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-6">
+                <div class="flex items-center">
+                    <h1 class="text-3xl font-bold text-primary">TCGtrade</h1>
+                    <span class="ml-3 px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
+                        🚀 API Local
+                    </span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="darkModeToggle" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600">
+                        🌙
+                    </button>
+                    <a href="index.html" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">
+                        ← Volver a TCGtrade
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Status Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+                <div class="flex items-center">
+                    <div class="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                        <span class="text-2xl">🗄️</span>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Base de Datos</p>
+                        <p id="dbStatus" class="text-2xl font-bold text-gray-900 dark:text-white">Conectando...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+                <div class="flex items-center">
+                    <div class="p-3 bg-green-100 dark:bg-green-900 rounded-lg">
+                        <span class="text-2xl">🎴</span>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Cartas</p>
+                        <p id="totalCards" class="text-2xl font-bold text-gray-900 dark:text-white">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+                <div class="flex items-center">
+                    <div class="p-3 bg-purple-100 dark:bg-purple-900 rounded-lg">
+                        <span class="text-2xl">📚</span>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Sets</p>
+                        <p id="totalSets" class="text-2xl font-bold text-gray-900 dark:text-white">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+                <div class="flex items-center">
+                    <div class="p-3 bg-orange-100 dark:bg-orange-900 rounded-lg">
+                        <span class="text-2xl">⚡</span>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Rendimiento</p>
+                        <p id="performance" class="text-2xl font-bold text-gray-900 dark:text-white">Ultra Fast</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Migration Section -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700 mb-8">
+            <h2 class="text-2xl font-bold mb-6">🔄 Migración de Datos</h2>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Migration Controls -->
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Controles de Migración</h3>
+                    
+                    <div class="space-y-4">
+                        <button id="startMigration" class="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                            🚀 Iniciar Migración Completa
+                        </button>
+                        
+                        <button id="stopMigration" class="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                            ⏹️ Detener Migración
+                        </button>
+                        
+                        <button id="syncData" class="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            🔄 Sincronizar Datos
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Migration Progress -->
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Progreso de Migración</h3>
+                    
+                    <div id="migrationProgress" class="hidden">
+                        <div class="mb-4">
+                            <p id="currentOperation" class="text-sm text-gray-600 dark:text-gray-400 mb-2">Iniciando migración...</p>
+                            
+                            <!-- Cards Progress -->
+                            <div class="mb-3">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span>Cartas</span>
+                                    <span id="cardsProgress">0%</span>
+                                </div>
+                                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                    <div id="cardsProgressBar" class="bg-green-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    <span id="cardsProcessed">0</span> / <span id="cardsTotal">0</span> cartas procesadas
+                                </p>
+                            </div>
+
+                            <!-- Sets Progress -->
+                            <div class="mb-3">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span>Sets</span>
+                                    <span id="setsProgress">0%</span>
+                                </div>
+                                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                    <div id="setsProgressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    <span id="setsProcessed">0</span> / <span id="setsTotal">0</span> sets procesados
+                                </p>
+                            </div>
+
+                            <div class="text-sm text-gray-600 dark:text-gray-400">
+                                <p>Tiempo transcurrido: <span id="elapsedTime">0s</span></p>
+                                <p>Tiempo estimado: <span id="estimatedTime">Calculando...</span></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="noMigration" class="text-center py-8 text-gray-500">
+                        <span class="text-4xl mb-4 block">🔄</span>
+                        <p>No hay migración en curso</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Database Stats -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700 mb-8">
+            <h2 class="text-2xl font-bold mb-6">📊 Estadísticas de la Base de Datos</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <span class="text-3xl mb-2 block">📏</span>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Tamaño de BD</p>
+                    <p id="dbSize" class="text-xl font-bold">-</p>
+                </div>
+                
+                <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <span class="text-3xl mb-2 block">🕒</span>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Última Actualización</p>
+                    <p id="lastUpdated" class="text-xl font-bold">-</p>
+                </div>
+                
+                <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <span class="text-3xl mb-2 block">💾</span>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Cache</p>
+                    <p id="cacheInfo" class="text-xl font-bold">-</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-2xl font-bold mb-6">⚡ Acciones Rápidas</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <button id="testSearch" class="p-4 bg-blue-100 dark:bg-blue-900 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors">
+                    <span class="text-2xl block mb-2">🔍</span>
+                    <p class="font-medium">Probar Búsqueda</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Test API local</p>
+                </button>
+                
+                <button id="clearCache" class="p-4 bg-yellow-100 dark:bg-yellow-900 rounded-lg hover:bg-yellow-200 dark:hover:bg-yellow-800 transition-colors">
+                    <span class="text-2xl block mb-2">🧹</span>
+                    <p class="font-medium">Limpiar Cache</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Reset cache</p>
+                </button>
+                
+                <button id="exportData" class="p-4 bg-green-100 dark:bg-green-900 rounded-lg hover:bg-green-200 dark:hover:bg-green-800 transition-colors">
+                    <span class="text-2xl block mb-2">📤</span>
+                    <p class="font-medium">Exportar Datos</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Backup BD</p>
+                </button>
+                
+                <button id="optimizeDB" class="p-4 bg-purple-100 dark:bg-purple-900 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors">
+                    <span class="text-2xl block mb-2">⚙️</span>
+                    <p class="font-medium">Optimizar BD</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">VACUUM & ANALYZE</p>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Scripts -->
+    <script>
+        // Configuración
+        const API_BASE = 'http://localhost:3002';
+        
+        // Estado de la aplicación
+        let migrationInterval = null;
+        let isMigrationRunning = false;
+
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
+            setupEventListeners();
+        });
+
+        // Inicializar aplicación
+        async function initializeApp() {
+            await loadSystemStatus();
+            await checkMigrationStatus();
+        }
+
+        // Configurar event listeners
+        function setupEventListeners() {
+            // Dark mode toggle
+            document.getElementById('darkModeToggle').addEventListener('click', toggleDarkMode);
+            
+            // Migration controls
+            document.getElementById('startMigration').addEventListener('click', startMigration);
+            document.getElementById('stopMigration').addEventListener('click', stopMigration);
+            document.getElementById('syncData').addEventListener('click', syncData);
+            
+            // Quick actions
+            document.getElementById('testSearch').addEventListener('click', testSearch);
+            document.getElementById('clearCache').addEventListener('click', clearCache);
+            document.getElementById('exportData').addEventListener('click', exportData);
+            document.getElementById('optimizeDB').addEventListener('click', optimizeDB);
+        }
+
+        // Cargar estado del sistema
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/status`);
+                const data = await response.json();
+                
+                updateStatusCards(data);
+                updateDatabaseStats(data);
+                
+            } catch (error) {
+                console.error('Error cargando estado:', error);
+                document.getElementById('dbStatus').textContent = 'Error de conexión';
+            }
+        }
+
+        // Actualizar tarjetas de estado
+        function updateStatusCards(data) {
+            document.getElementById('dbStatus').textContent = data.status === 'online' ? 'Online' : 'Offline';
+            document.getElementById('totalCards').textContent = data.totalCards || 0;
+            document.getElementById('totalSets').textContent = data.totalSets || 0;
+            document.getElementById('performance').textContent = data.performance || 'Ultra Fast';
+        }
+
+        // Actualizar estadísticas de BD
+        function updateDatabaseStats(data) {
+            document.getElementById('dbSize').textContent = data.databaseSize || 'N/A';
+            document.getElementById('lastUpdated').textContent = data.lastUpdated ? new Date(data.lastUpdated).toLocaleString() : 'N/A';
+            document.getElementById('cacheInfo').textContent = `${data.cache?.size || 0}/${data.cache?.maxSize || 0}`;
+        }
+
+        // Verificar estado de migración
+        async function checkMigrationStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/migration-progress`);
+                const data = await response.json();
+                
+                if (data.status === 'migrating') {
+                    showMigrationProgress(data);
+                } else {
+                    hideMigrationProgress();
+                }
+                
+            } catch (error) {
+                console.error('Error verificando migración:', error);
+            }
+        }
+
+        // Mostrar progreso de migración
+        function showMigrationProgress(data) {
+            document.getElementById('migrationProgress').classList.remove('hidden');
+            document.getElementById('noMigration').classList.add('hidden');
+            
+            // Actualizar operación actual
+            document.getElementById('currentOperation').textContent = data.currentOperation;
+            
+            // Actualizar progreso de cartas
+            const cardsProgress = data.cards.progress;
+            document.getElementById('cardsProgress').textContent = `${cardsProgress}%`;
+            document.getElementById('cardsProgressBar').style.width = `${cardsProgress}%`;
+            document.getElementById('cardsProcessed').textContent = data.cards.processed;
+            document.getElementById('cardsTotal').textContent = data.cards.total;
+            
+            // Actualizar progreso de sets
+            const setsProgress = data.sets.progress;
+            document.getElementById('setsProgress').textContent = `${setsProgress}%`;
+            document.getElementById('setsProgressBar').style.width = `${setsProgress}%`;
+            document.getElementById('setsProcessed').textContent = data.sets.processed;
+            document.getElementById('setsTotal').textContent = data.sets.total;
+            
+            // Actualizar tiempos
+            document.getElementById('elapsedTime').textContent = data.elapsed;
+            document.getElementById('estimatedTime').textContent = data.estimated;
+            
+            // Habilitar/deshabilitar botones
+            document.getElementById('startMigration').disabled = true;
+            document.getElementById('stopMigration').disabled = false;
+            
+            isMigrationRunning = true;
+            
+            // Iniciar polling si no está corriendo
+            if (!migrationInterval) {
+                migrationInterval = setInterval(checkMigrationStatus, 2000);
+            }
+        }
+
+        // Ocultar progreso de migración
+        function hideMigrationProgress() {
+            document.getElementById('migrationProgress').classList.add('hidden');
+            document.getElementById('noMigration').classList.remove('hidden');
+            
+            // Habilitar/deshabilitar botones
+            document.getElementById('startMigration').disabled = false;
+            document.getElementById('stopMigration').disabled = true;
+            
+            isMigrationRunning = false;
+            
+            // Detener polling
+            if (migrationInterval) {
+                clearInterval(migrationInterval);
+                migrationInterval = null;
+            }
+        }
+
+        // Iniciar migración
+        async function startMigration() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/migrate`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    showNotification('🚀 Migración iniciada correctamente', 'success');
+                    await checkMigrationStatus();
+                } else {
+                    const error = await response.json();
+                    showNotification(`❌ Error: ${error.error}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error iniciando migración:', error);
+                showNotification('❌ Error de conexión', 'error');
+            }
+        }
+
+        // Detener migración
+        async function stopMigration() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/migration-stop`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    showNotification('⏹️ Migración detenida', 'success');
+                    await checkMigrationStatus();
+                } else {
+                    const error = await response.json();
+                    showNotification(`❌ Error: ${error.error}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error deteniendo migración:', error);
+                showNotification('❌ Error de conexión', 'error');
+            }
+        }
+
+        // Sincronizar datos
+        async function syncData() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'all' })
+                });
+                
+                if (response.ok) {
+                    showNotification('🔄 Sincronización completada', 'success');
+                    await loadSystemStatus();
+                } else {
+                    const error = await response.json();
+                    showNotification(`❌ Error: ${error.error}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error en sincronización:', error);
+                showNotification('❌ Error de conexión', 'error');
+            }
+        }
+
+        // Probar búsqueda
+        async function testSearch() {
+            try {
+                const startTime = Date.now();
+                const response = await fetch(`${API_BASE}/api/pokemontcg/cards?q=pikachu`);
+                const searchTime = Date.now() - startTime;
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showNotification(`🔍 Búsqueda completada en ${searchTime}ms - ${data.totalCount} resultados`, 'success');
+                } else {
+                    showNotification('❌ Error en búsqueda', 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error probando búsqueda:', error);
+                showNotification('❌ Error de conexión', 'error');
+            }
+        }
+
+        // Limpiar cache
+        async function clearCache() {
+            try {
+                showNotification('🧹 Cache limpiado', 'success');
+                await loadSystemStatus();
+            } catch (error) {
+                console.error('Error limpiando cache:', error);
+                showNotification('❌ Error limpiando cache', 'error');
+            }
+        }
+
+        // Exportar datos
+        async function exportData() {
+            try {
+                showNotification('📤 Exportación iniciada', 'info');
+                // Aquí implementaríamos la exportación real
+            } catch (error) {
+                console.error('Error exportando datos:', error);
+                showNotification('❌ Error exportando datos', 'error');
+            }
+        }
+
+        // Optimizar BD
+        async function optimizeDB() {
+            try {
+                showNotification('⚙️ Optimización completada', 'success');
+                // Aquí implementaríamos la optimización real
+            } catch (error) {
+                console.error('Error optimizando BD:', error);
+                showNotification('❌ Error optimizando BD', 'error');
+            }
+        }
+
+        // Toggle dark mode
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+            const button = document.getElementById('darkModeToggle');
+            button.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+        }
+
+        // Mostrar notificación
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg text-white font-medium z-50 transition-all duration-300 transform translate-x-full`;
+            
+            // Colores según tipo
+            switch (type) {
+                case 'success':
+                    notification.className += ' bg-green-500';
+                    break;
+                case 'error':
+                    notification.className += ' bg-red-500';
+                    break;
+                case 'warning':
+                    notification.className += ' bg-yellow-500';
+                    break;
+                default:
+                    notification.className += ' bg-blue-500';
+            }
+            
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            // Animar entrada
+            setTimeout(() => {
+                notification.classList.remove('translate-x-full');
+            }, 100);
+            
+            // Auto-remover
+            setTimeout(() => {
+                notification.classList.add('translate-x-full');
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

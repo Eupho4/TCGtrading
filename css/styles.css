@@ -1,0 +1,676 @@
+/* ==============================================
+   TCGtrade - Estilos CSS
+   ============================================== */
+
+/* ==============================================
+   Variables CSS
+   ============================================== */
+:root {
+    --color-primary-bg: #f0f9ff;
+    --color-text: #1a202c;
+    --color-header-bg: #2a6f8b;
+    --color-footer-bg: #1f4e5a;
+    --color-card-bg: #ffffff;
+    --color-nav-link-hover: #e0f2fe;
+    --color-btn-secondary-bg: #4a5568;
+    --color-btn-secondary-hover: #2d3748;
+    --color-missing-card-bg: #e2e8f0;
+    --color-missing-card-border: #a0aec0;
+    --color-settings-bg: #f7fafc;
+    --color-input-text: #1a202c;
+    --color-input-placeholder: #a0aec0;
+    --color-select-text: #1a202c;
+}
+
+body.dark-mode {
+    --color-primary-bg: #1a1a1a;
+    --color-text: white;
+    --color-header-bg: #000000;
+    --color-footer-bg: #000000;
+    --color-card-bg: #2d2d2d;
+    --color-nav-link-hover: #444444;
+    --color-btn-secondary-bg: #555555;
+    --color-btn-secondary-hover: #666666;
+    --color-missing-card-bg: #444444;
+    --color-missing-card-border: #888888;
+    --color-settings-bg: #333333;
+    --color-input-text: white;
+    --color-input-placeholder: #a0aec0;
+    --color-select-text: white;
+}
+
+/* ==============================================
+   Estilos Base
+   ============================================== */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--color-primary-bg);
+    color: var(--color-text);
+}
+
+/* Transiciones suaves */
+* {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* ==============================================
+   Modo Oscuro
+   ============================================== */
+.dark-mode {
+    background-color: #1a1a1a;
+    color: #ffffff;
+}
+
+.dark-mode .bg-white {
+    background-color: #2d2d2d;
+}
+
+.dark-mode .text-gray-800 {
+    color: #ffffff;
+}
+
+.dark-mode .text-gray-600 {
+    color: #a0a0a0;
+}
+
+.dark-mode .text-gray-700 {
+    color: #d1d5db;
+}
+
+.dark-mode .border-gray-200 {
+    border-color: #4b5563;
+}
+
+.dark-mode .shadow-lg {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+}
+
+/* Modo oscuro específico para formularios */
+body.dark-mode label { 
+    color: var(--color-text) !important; 
+}
+
+body.dark-mode input[type="text"],
+body.dark-mode input[type="email"],
+body.dark-mode input[type="password"],
+body.dark-mode input[type="tel"] {
+    background-color: #444444;
+    color: var(--color-input-text);
+    border-color: #666666;
+}
+
+body.dark-mode input[type="text"]::placeholder,
+body.dark-mode input[type="email"]::placeholder,
+body.dark-mode input[type="password"]::placeholder,
+body.dark-mode input[type="tel"]::placeholder {
+    color: var(--color-input-placeholder);
+}
+
+body.dark-mode #howItWorks .card-bg p,
+body.dark-mode #howItWorks .card-bg h3 { 
+    color: white; 
+}
+
+body.dark-mode #myCardsSection h2 { 
+    color: white; 
+}
+
+body.dark-mode #interchangesSection h2 { 
+    color: white; 
+}
+
+/* ==============================================
+   Toggle Switch (Modo Oscuro)
+   ============================================== */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #d1d5db;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+input:checked + .toggle-slider {
+    background-color: #f97316;
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+
+.toggle-slider:hover {
+    background-color: #9ca3af;
+}
+
+input:checked + .toggle-slider:hover {
+    background-color: #ea580c;
+}
+
+/* ==============================================
+   Componentes de Navegación
+   ============================================== */
+.header-bg { 
+    background-color: var(--color-header-bg); 
+}
+
+.nav-link { 
+    transition: color 0.3s ease, transform 0.2s ease; 
+}
+
+.nav-link:hover {
+    background-color: var(--color-nav-link-hover);
+    color: var(--color-header-bg);
+}
+
+.footer-bg { 
+    background-color: var(--color-footer-bg); 
+}
+
+/* ==============================================
+   Botones
+   ============================================== */
+.btn-primary {
+    background-color: #f97316;
+    color: white;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:hover {
+    background-color: #ea580c;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-secondary {
+    background-color: var(--color-btn-secondary-bg);
+    color: white;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-secondary:hover {
+    background-color: var(--color-btn-secondary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* ==============================================
+   Cards
+   ============================================== */
+.card-bg {
+    background-color: var(--color-card-bg);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+.card-bg:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.missing-card {
+    background-color: var(--color-missing-card-bg);
+    border: 2px dashed var(--color-missing-card-border);
+    color: var(--color-text);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 1rem;
+    height: 100%;
+}
+
+.missing-card img {
+    opacity: 0.3;
+}
+
+/* ==============================================
+   Hero Section
+   ============================================== */
+.hero-section {
+    background: linear-gradient(to right, var(--color-header-bg), var(--color-footer-bg));
+    color: white;
+    padding: 4rem 1rem;
+    text-align: center;
+    border-radius: 1rem;
+    margin-bottom: 3rem;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.hero-section h1 {
+    font-size: 3.5rem;
+    font-weight: 800;
+    margin-bottom: 1rem;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.hero-section p {
+    font-size: 1.5rem;
+    margin-bottom: 2rem;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* ==============================================
+   Modal de Autenticación
+   ============================================== */
+.auth-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.auth-modal-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.auth-modal-content {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 450px;
+    position: relative;
+    transform: translateY(-20px);
+    transition: transform 0.3s ease, background-color 0.3s ease;
+}
+
+/* Modo oscuro para el modal */
+.dark-mode .auth-modal-content {
+    background-color: #2d2d2d;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.auth-modal-overlay.show .auth-modal-content {
+    transform: translateY(0);
+}
+
+.auth-modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #4a5568;
+    transition: color 0.3s ease;
+}
+
+.dark-mode .auth-modal-close {
+    color: #cbd5e0;
+}
+
+.dark-mode .auth-modal-close:hover {
+    color: #ffffff;
+}
+
+.auth-form-toggle {
+    color: #2a6f8b;
+    cursor: pointer;
+    text-decoration: underline;
+    transition: color 0.3s ease;
+}
+
+.dark-mode .auth-form-toggle {
+    color: #60a5fa;
+}
+
+.dark-mode .auth-form-toggle:hover {
+    color: #93bbfc;
+}
+
+/* ==============================================
+   Tabs (Perfil, Intercambios, Ayuda)
+   ============================================== */
+.profile-tab,
+.trade-tab,
+.help-tab {
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.profile-tab:hover,
+.trade-tab:hover,
+.help-tab:hover {
+    color: #f97316;
+}
+
+.profile-tab.active,
+.trade-tab.active,
+.help-tab.active {
+    color: #f97316;
+    border-bottom-color: #f97316;
+}
+
+.profile-tab-content,
+.trade-tab-content,
+.help-tab-content {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.profile-tab-content.hidden,
+.trade-tab-content.hidden,
+.help-tab-content.hidden {
+    opacity: 0;
+    transform: translateY(10px);
+}
+
+/* ==============================================
+   FAQ
+   ============================================== */
+.faq-question {
+    transition: all 0.3s ease;
+}
+
+.faq-question:hover {
+    background-color: #f3f4f6;
+}
+
+.faq-answer {
+    transition: all 0.3s ease;
+}
+
+.faq-answer.show {
+    display: block;
+}
+
+/* ==============================================
+   Estadísticas
+   ============================================== */
+.stats-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stats-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* ==============================================
+   Desglose de Sets
+   ============================================== */
+.set-item {
+    transition: background-color 0.3s ease;
+}
+
+.set-item:hover {
+    background-color: #f8fafc;
+}
+
+/* ==============================================
+   Selector de Idioma
+   ============================================== */
+#languageFilter {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 1.5;
+    background-color: #ffffff;
+    color: #374151;
+    border: 2px solid #d1d5db;
+}
+
+#languageFilter option {
+    font-weight: 500;
+    padding: 8px 12px;
+    background-color: #ffffff;
+    color: #374151;
+}
+
+#languageFilter:focus {
+    border-color: #f97316;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}
+
+/* Mejorar visibilidad en modo oscuro */
+.dark-mode #languageFilter {
+    background-color: #1f2937;
+    color: #f9fafb;
+    border-color: #4b5563;
+}
+
+.dark-mode #languageFilter option {
+    background-color: #1f2937;
+    color: #f9fafb;
+}
+
+/* ==============================================
+   Selectores de Condición de Cartas
+   ============================================== */
+.condition-selector {
+    background-color: #ffffff;
+    color: #374151;
+    border: 2px solid #d1d5db;
+    transition: all 0.2s ease;
+}
+
+.condition-selector:focus {
+    border-color: #f97316;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}
+
+.condition-selector option {
+    padding: 8px 12px;
+    font-weight: 500;
+}
+
+.condition-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: white;
+    transition: all 0.2s ease;
+}
+
+.condition-badge:hover {
+    transform: scale(1.05);
+    cursor: help;
+}
+
+.condition-tooltip {
+    pointer-events: none;
+    animation: fadeIn 0.2s ease;
+}
+
+/* Modo oscuro para selectores de condición */
+.dark-mode .condition-selector {
+    background-color: #1f2937;
+    color: #f9fafb;
+    border-color: #4b5563;
+}
+
+.dark-mode .condition-selector:focus {
+    border-color: #f97316;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+}
+
+/* ==============================================
+   Loader
+   ============================================== */
+.loader {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #f97316;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+}
+
+/* Modo oscuro para el loader */
+.dark-mode .loader {
+    border-color: #4b5563;
+    border-top-color: #f97316;
+}
+
+/* ==============================================
+   Pokéball Spinner
+   ============================================== */
+.pokeball-spinner {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(180deg, #ff0000 0%, #ff0000 45%, #ffffff 45%, #ffffff 55%, #ff0000 55%, #ff0000 100%);
+    border-radius: 50%;
+    border: 4px solid #000000;
+    position: relative;
+    animation: spin 1.5s linear infinite;
+}
+
+.pokeball-spinner::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    background: #ffffff;
+    border: 4px solid #000000;
+    border-radius: 50%;
+}
+
+.pokeball-spinner::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 8px;
+    background: #000000;
+    border-radius: 50%;
+}
+
+/* Modo oscuro para la Pokéball */
+.dark-mode .pokeball-spinner {
+    border-color: #ffffff;
+}
+
+.dark-mode .pokeball-spinner::before {
+    border-color: #ffffff;
+}
+
+/* ==============================================
+   Pokéball Spinner Grande (para loading principal)
+   ============================================== */
+.pokeball-spinner-large {
+    width: 120px;
+    height: 120px;
+    background: linear-gradient(180deg, #ff0000 0%, #ff0000 45%, #ffffff 45%, #ffffff 55%, #ff0000 55%, #ff0000 100%);
+    border-radius: 50%;
+    border: 6px solid #000000;
+    position: relative;
+    animation: spin 1.5s linear infinite;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.pokeball-spinner-large::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 30px;
+    height: 30px;
+    background: #ffffff;
+    border: 6px solid #000000;
+    border-radius: 50%;
+}
+
+.pokeball-spinner-large::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 12px;
+    height: 12px;
+    background: #000000;
+    border-radius: 50%;
+}
+
+/* Modo oscuro para la Pokéball grande */
+.dark-mode .pokeball-spinner-large {
+    border-color: #ffffff;
+    box-shadow: 0 8px 32px rgba(255, 255, 255, 0.2);
+}
+
+.dark-mode .pokeball-spinner-large::before {
+    border-color: #ffffff;
+}
+
+/* ==============================================
+   Utilidades
+   ============================================== */
+.icon {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 0.5rem;
+}
+
+/* ==============================================
+   Animaciones
+   ============================================== */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(-5px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
