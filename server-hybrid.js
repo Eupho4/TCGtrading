@@ -164,12 +164,24 @@ class HybridAPIServer {
                     ...results
                 });
             } catch (error) {
-                console.error('Error en búsqueda de cartas:', error);
-                res.status(500).json({
-                    success: false,
-                    error: 'Error en búsqueda',
-                    message: error.message
-                });
+                console.error('⚠️ Error en búsqueda PostgreSQL, intentando fallback a API pública:', error.message);
+
+                // Fallback: usar la API pública de pokemontcg.io
+                try {
+                    const fallbackResults = await this.fallbackToPublicAPI(req.query);
+                    res.json({
+                        success: true,
+                        fallback: true,
+                        ...fallbackResults
+                    });
+                } catch (fallbackError) {
+                    console.error('❌ Fallback también falló:', fallbackError.message);
+                    res.status(500).json({
+                        success: false,
+                        error: 'Error en búsqueda',
+                        message: error.message
+                    });
+                }
             }
         });
 
@@ -364,6 +376,88 @@ class HybridAPIServer {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
+
+    // Fallback: buscar en la API pública de pokemontcg.io
+    async fallbackToPublicAPI(queryParams) {
+        const { q: searchTerm, page = 1, pageSize = 20 } = queryParams;
+        const apiKey = process.env.POKEMON_TCG_API_KEY || '';
+
+        // Construir query para la API pública
+        let apiQuery = '';
+        if (searchTerm && searchTerm.trim()) {
+            apiQuery = `name:${searchTerm}*`;
+        }
+
+        const apiUrl = `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(apiQuery)}&page=${page}&pageSize=${pageSize}&orderBy=name`;
+        console.log('🌐 Fallback API URL:', apiUrl);
+
+        return new Promise((resolve, reject) => {
+            const headers = { 'Content-Type': 'application/json' };
+            if (apiKey) {
+                headers['X-Api-Key'] = apiKey;
+            }
+
+            const url = new URL(apiUrl);
+            const options = {
+                hostname: url.hostname,
+                path: url.pathname + url.search,
+                method: 'GET',
+                headers: headers
+            };
+
+            const req = https.request(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => {
+                    try {
+                        const jsonData = JSON.parse(data);
+                        if (res.statusCode >= 200 && res.statusCode < 300) {
+                            const cards = (jsonData.data || []).map(card => ({
+                                id: card.id,
+                                name: card.name,
+                                number: card.number || '',
+                                rarity: card.rarity || 'Common',
+                                types: card.types || [],
+                                subtypes: card.subtypes || [],
+                                images: card.images || {},
+                                tcgplayer: card.tcgplayer || {},
+                                cardmarket: card.cardmarket || {},
+                                set: {
+                                    id: card.set?.id || '',
+                                    name: card.set?.name || '',
+                                    series: card.set?.series || ''
+                                }
+                            }));
+
+                            console.log(`✅ Fallback API: ${cards.length} cartas encontradas`);
+                            resolve({
+                                data: cards,
+                                totalCount: jsonData.totalCount || cards.length,
+                                page: parseInt(page),
+                                pageSize: parseInt(pageSize),
+                                totalPages: Math.ceil((jsonData.totalCount || cards.length) / parseInt(pageSize))
+                            });
+                        } else {
+                            reject(new Error(`API responded with ${res.statusCode}: ${jsonData.message || 'Unknown error'}`));
+                        }
+                    } catch (e) {
+                        reject(new Error('Error parsing API response: ' + e.message));
+                    }
+                });
+            });
+
+            req.on('error', (error) => {
+                reject(new Error('Fallback API request failed: ' + error.message));
+            });
+
+            req.setTimeout(15000, () => {
+                req.destroy();
+                reject(new Error('Fallback API timeout'));
+            });
+
+            req.end();
+        });
+    }
 
     // Inicializar servidor
     async init() {
