@@ -2,15 +2,17 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const https = require('https');
+const fetch = require('node-fetch');
 
 // Handlers globales para evitar crashes
 process.on('uncaughtException', (err) => {
     console.error('uncaughtException:', err.message);
 });
 process.on('unhandledRejection', (reason) => {
-    console.error('unhandledRejection:', reason?.message || reason);
+    console.error('unhandledRejection:', reason && reason.message ? reason.message : reason);
 });
+
+const POKEMON_TCG_API = 'https://api.pokemontcg.io/v2';
 
 class HybridAPIServer {
     constructor() {
@@ -21,40 +23,20 @@ class HybridAPIServer {
         this.setupRoutes();
     }
 
-    // Helper: hacer request HTTPS a la API de pokemontcg.io
-    apiRequest(apiPath) {
-        return new Promise((resolve, reject) => {
-            const headers = {};
-            if (this.apiKey) headers['X-Api-Key'] = this.apiKey;
+    // Helper: hacer request a la API de pokemontcg.io usando node-fetch
+    async apiRequest(endpoint) {
+        const headers = {};
+        if (this.apiKey) headers['X-Api-Key'] = this.apiKey;
 
-            const options = {
-                hostname: 'api.pokemontcg.io',
-                path: apiPath,
-                method: 'GET',
-                headers: headers
-            };
+        const url = POKEMON_TCG_API + endpoint;
+        console.log('API Request:', url);
 
-            const req = https.request(options, (res) => {
-                let data = '';
-                res.on('data', (chunk) => { data += chunk; });
-                res.on('end', () => {
-                    try {
-                        const json = JSON.parse(data);
-                        if (res.statusCode >= 200 && res.statusCode < 300) {
-                            resolve(json);
-                        } else {
-                            reject(new Error(`API ${res.statusCode}: ${json.message || JSON.stringify(json)}`));
-                        }
-                    } catch (e) {
-                        reject(new Error('Error parsing API response'));
-                    }
-                });
-            });
-
-            req.on('error', (err) => reject(new Error('API request failed: ' + err.message)));
-            req.setTimeout(20000, () => { req.destroy(); reject(new Error('API timeout')); });
-            req.end();
-        });
+        const response = await fetch(url, { headers, timeout: 20000 });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error('API ' + response.status + ': ' + text.substring(0, 200));
+        }
+        return await response.json();
     }
 
     setupMiddleware() {
@@ -69,67 +51,70 @@ class HybridAPIServer {
 
     setupRoutes() {
         // Health check
-        this.app.get('/api/health', (req, res) => {
-            res.json({ status: 'ok', version: 'v8-direct-api', timestamp: new Date().toISOString() });
+        this.app.get('/api/health', function(req, res) {
+            res.json({ status: 'ok', version: 'v9-fetch', timestamp: new Date().toISOString() });
         });
 
         // Servir index.html
-        this.app.get('/', (req, res) => {
+        this.app.get('/', function(req, res) {
             res.sendFile(path.join(__dirname, 'html', 'index.html'));
         });
 
         // Estado del sistema
-        this.app.get('/api/status', (req, res) => {
+        this.app.get('/api/status', function(req, res) {
             res.json({
                 status: 'online',
                 timestamp: new Date().toISOString(),
-                searchEngine: 'Pokemon TCG API (api.pokemontcg.io)',
-                pokemonApiKey: !!this.apiKey,
+                searchEngine: 'Pokemon TCG API directa',
                 databaseType: 'API directa'
             });
         });
 
-        // ==========================================
-        // BUSQUEDA DE CARTAS - API publica directa
-        // ==========================================
-        this.app.get('/api/pokemontcg/cards', async (req, res) => {
+        // BUSQUEDA DE CARTAS
+        var self = this;
+        this.app.get('/api/pokemontcg/cards', async function(req, res) {
             try {
-                const { q: searchTerm, page = 1, pageSize = 20 } = req.query;
-                console.log('Busqueda recibida:', { searchTerm, page, pageSize });
+                var searchTerm = req.query.q || '';
+                var page = req.query.page || 1;
+                var pageSize = req.query.pageSize || 20;
+                console.log('Busqueda:', searchTerm, 'page:', page);
 
-                let apiQuery = '';
+                var apiQuery = '';
                 if (searchTerm && searchTerm.trim()) {
-                    apiQuery = `name:${searchTerm}`;
+                    apiQuery = 'name:' + searchTerm;
                 }
 
-                const apiPath = `/v2/cards?q=${encodeURIComponent(apiQuery)}&page=${page}&pageSize=${pageSize}&orderBy=name`;
-                const json = await this.apiRequest(apiPath);
+                var endpoint = '/cards?q=' + encodeURIComponent(apiQuery) + '&page=' + page + '&pageSize=' + pageSize + '&orderBy=name';
+                var json = await self.apiRequest(endpoint);
 
-                const cards = (json.data || []).map(card => ({
-                    id: card.id,
-                    name: card.name,
-                    number: card.number || '',
-                    rarity: card.rarity || 'Common',
-                    types: card.types || [],
-                    subtypes: card.subtypes || [],
-                    images: card.images || {},
-                    tcgplayer: card.tcgplayer || {},
-                    cardmarket: card.cardmarket || {},
-                    set: {
-                        id: card.set?.id || '',
-                        name: card.set?.name || '',
-                        series: card.set?.series || ''
-                    }
-                }));
+                var cards = (json.data || []).map(function(card) {
+                    return {
+                        id: card.id,
+                        name: card.name,
+                        number: card.number || '',
+                        rarity: card.rarity || 'Common',
+                        types: card.types || [],
+                        subtypes: card.subtypes || [],
+                        images: card.images || {},
+                        tcgplayer: card.tcgplayer || {},
+                        cardmarket: card.cardmarket || {},
+                        set: {
+                            id: (card.set && card.set.id) || '',
+                            name: (card.set && card.set.name) || '',
+                            series: (card.set && card.set.series) || ''
+                        }
+                    };
+                });
 
-                console.log(`Encontradas ${cards.length} cartas de ${json.totalCount || 0} total`);
+                var totalCount = json.totalCount || cards.length;
+                console.log('Encontradas ' + cards.length + ' cartas de ' + totalCount);
                 res.json({
                     success: true,
                     data: cards,
-                    totalCount: json.totalCount || cards.length,
+                    totalCount: totalCount,
                     page: parseInt(page),
                     pageSize: parseInt(pageSize),
-                    totalPages: Math.ceil((json.totalCount || cards.length) / parseInt(pageSize))
+                    totalPages: Math.ceil(totalCount / parseInt(pageSize))
                 });
             } catch (error) {
                 console.error('Error en busqueda:', error.message);
@@ -137,133 +122,126 @@ class HybridAPIServer {
             }
         });
 
-        // ==========================================
-        // SETS - API publica directa
-        // ==========================================
-        this.app.get('/api/pokemontcg/sets', async (req, res) => {
+        // SETS
+        this.app.get('/api/pokemontcg/sets', async function(req, res) {
             try {
-                const json = await this.apiRequest('/v2/sets?orderBy=releaseDate');
-                const sets = (json.data || []).map(s => ({
-                    id: s.id,
-                    name: s.name,
-                    series: s.series || '',
-                    cardCount: s.total || 0,
-                    source: 'pokemontcg'
-                }));
+                var json = await self.apiRequest('/sets?orderBy=releaseDate');
+                var sets = (json.data || []).map(function(s) {
+                    return {
+                        id: s.id,
+                        name: s.name,
+                        series: s.series || '',
+                        cardCount: s.total || 0,
+                        source: 'pokemontcg'
+                    };
+                });
                 res.json({ success: true, data: sets, count: sets.length });
             } catch (error) {
-                console.error('Error obteniendo sets:', error.message);
+                console.error('Error sets:', error.message);
                 res.status(500).json({ success: false, error: 'Error obteniendo sets', message: error.message });
             }
         });
 
-        // ==========================================
-        // TYPES - API publica directa
-        // ==========================================
-        this.app.get('/api/pokemontcg/types', async (req, res) => {
+        // TYPES
+        this.app.get('/api/pokemontcg/types', async function(req, res) {
             try {
-                const json = await this.apiRequest('/v2/types');
-                const types = (json.data || []).map(t => ({ id: t.toLowerCase(), name: t }));
+                var json = await self.apiRequest('/types');
+                var types = (json.data || []).map(function(t) {
+                    return { id: t.toLowerCase(), name: t };
+                });
                 res.json({ success: true, data: types, count: types.length });
             } catch (error) {
-                console.error('Error obteniendo tipos:', error.message);
+                console.error('Error types:', error.message);
                 res.status(500).json({ success: false, error: 'Error obteniendo tipos', message: error.message });
             }
         });
 
-        // ==========================================
-        // RARITIES - API publica directa
-        // ==========================================
-        this.app.get('/api/pokemontcg/rarities', async (req, res) => {
+        // RARITIES
+        this.app.get('/api/pokemontcg/rarities', async function(req, res) {
             try {
-                const json = await this.apiRequest('/v2/rarities');
-                const rarities = (json.data || []).map(r => ({
-                    id: r.toLowerCase().replace(/\s+/g, '-'),
-                    name: r
-                }));
+                var json = await self.apiRequest('/rarities');
+                var rarities = (json.data || []).map(function(r) {
+                    return { id: r.toLowerCase().replace(/\s+/g, '-'), name: r };
+                });
                 res.json({ success: true, data: rarities, count: rarities.length });
             } catch (error) {
-                console.error('Error obteniendo rarezas:', error.message);
+                console.error('Error rarities:', error.message);
                 res.status(500).json({ success: false, error: 'Error obteniendo rarezas', message: error.message });
             }
         });
 
-        // ==========================================
-        // SUBTYPES - API publica directa
-        // ==========================================
-        this.app.get('/api/pokemontcg/subtypes', async (req, res) => {
+        // SUBTYPES
+        this.app.get('/api/pokemontcg/subtypes', async function(req, res) {
             try {
-                const json = await this.apiRequest('/v2/subtypes');
-                const subtypes = (json.data || []).map(s => ({
-                    id: s.toLowerCase().replace(/\s+/g, '-'),
-                    name: s
-                }));
+                var json = await self.apiRequest('/subtypes');
+                var subtypes = (json.data || []).map(function(s) {
+                    return { id: s.toLowerCase().replace(/\s+/g, '-'), name: s };
+                });
                 res.json({ success: true, data: subtypes, count: subtypes.length });
             } catch (error) {
-                console.error('Error obteniendo subtipos:', error.message);
+                console.error('Error subtypes:', error.message);
                 res.status(500).json({ success: false, error: 'Error obteniendo subtipos', message: error.message });
             }
         });
 
-        // ==========================================
-        // LANGUAGES - lista estatica
-        // ==========================================
-        this.app.get('/api/pokemontcg/languages', (req, res) => {
-            const languages = [
-                { code: 'en', name: 'English', category: 'western', available: true },
-                { code: 'es', name: 'Espanol', category: 'western', available: true },
-                { code: 'fr', name: 'Francais', category: 'western', available: true },
-                { code: 'de', name: 'Deutsch', category: 'western', available: true },
-                { code: 'it', name: 'Italiano', category: 'western', available: true },
-                { code: 'pt', name: 'Portugues', category: 'western', available: true },
-                { code: 'ja', name: 'Japones', category: 'asian', available: true },
-                { code: 'ko', name: 'Coreano', category: 'asian', available: true }
-            ];
-            res.json({ success: true, data: languages, count: languages.length });
+        // LANGUAGES
+        this.app.get('/api/pokemontcg/languages', function(req, res) {
+            res.json({
+                success: true,
+                data: [
+                    { code: 'en', name: 'English', available: true },
+                    { code: 'es', name: 'Espanol', available: true },
+                    { code: 'fr', name: 'Francais', available: true },
+                    { code: 'de', name: 'Deutsch', available: true },
+                    { code: 'it', name: 'Italiano', available: true },
+                    { code: 'pt', name: 'Portugues', available: true },
+                    { code: 'ja', name: 'Japones', available: true },
+                    { code: 'ko', name: 'Coreano', available: true }
+                ],
+                count: 8
+            });
         });
 
-        // ==========================================
-        // SERIES - extraer de sets
-        // ==========================================
-        this.app.get('/api/pokemontcg/series', async (req, res) => {
+        // SERIES
+        this.app.get('/api/pokemontcg/series', async function(req, res) {
             try {
-                const json = await this.apiRequest('/v2/sets?orderBy=releaseDate');
-                const seriesMap = new Map();
-                (json.data || []).forEach(s => {
+                var json = await self.apiRequest('/sets?orderBy=releaseDate');
+                var seriesMap = {};
+                (json.data || []).forEach(function(s) {
                     if (s.series) {
-                        if (!seriesMap.has(s.series)) {
-                            seriesMap.set(s.series, { name: s.series, cardCount: 0 });
+                        if (!seriesMap[s.series]) {
+                            seriesMap[s.series] = { name: s.series, cardCount: 0 };
                         }
-                        seriesMap.get(s.series).cardCount += (s.total || 0);
+                        seriesMap[s.series].cardCount += (s.total || 0);
                     }
                 });
-                const series = Array.from(seriesMap.values()).map(s => ({
-                    id: s.name.toLowerCase().replace(/\s+/g, '-'),
-                    name: s.name,
-                    cardCount: s.cardCount
-                }));
+                var series = Object.values(seriesMap).map(function(s) {
+                    return {
+                        id: s.name.toLowerCase().replace(/\s+/g, '-'),
+                        name: s.name,
+                        cardCount: s.cardCount
+                    };
+                });
                 res.json({ success: true, data: series, count: series.length });
             } catch (error) {
-                console.error('Error obteniendo series:', error.message);
+                console.error('Error series:', error.message);
                 res.status(500).json({ success: false, error: 'Error obteniendo series', message: error.message });
             }
         });
 
-        // ==========================================
         // EXPORTS
-        // ==========================================
-        this.app.get('/api/exports', (req, res) => {
-            const fs = require('fs');
+        this.app.get('/api/exports', function(req, res) {
+            var fs = require('fs');
             try {
-                const exportsDir = path.join(__dirname, 'exported_data');
+                var exportsDir = path.join(__dirname, 'exported_data');
                 if (!fs.existsSync(exportsDir)) {
-                    return res.json({ message: 'No hay archivos exportados', totalFiles: 0, files: [] });
+                    return res.json({ totalFiles: 0, files: [] });
                 }
-                const files = fs.readdirSync(exportsDir).map(file => {
-                    const stats = fs.statSync(path.join(exportsDir, file));
-                    return { name: file, size: stats.size, downloadUrl: `/exports/${file}` };
+                var files = fs.readdirSync(exportsDir).map(function(file) {
+                    var stats = fs.statSync(path.join(exportsDir, file));
+                    return { name: file, size: stats.size, downloadUrl: '/exports/' + file };
                 });
-                res.json({ totalFiles: files.length, files });
+                res.json({ totalFiles: files.length, files: files });
             } catch (error) {
                 res.status(500).json({ error: 'Error listando exports', message: error.message });
             }
@@ -271,17 +249,16 @@ class HybridAPIServer {
     }
 
     async start() {
-        this.app.listen(this.port, '0.0.0.0', () => {
-            console.log(`Servidor en puerto ${this.port}`);
-            console.log(`URL: http://localhost:${this.port}`);
-            console.log(`Busqueda: http://localhost:${this.port}/api/pokemontcg/cards?q=pikachu`);
+        var self = this;
+        this.app.listen(this.port, '0.0.0.0', function() {
+            console.log('Servidor en puerto ' + self.port);
         });
     }
 }
 
 if (require.main === module) {
-    const server = new HybridAPIServer();
-    server.start().catch(err => {
+    var server = new HybridAPIServer();
+    server.start().catch(function(err) {
         console.error('Error fatal:', err);
         process.exit(1);
     });
