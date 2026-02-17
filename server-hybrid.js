@@ -10,7 +10,7 @@ const DataMigrator = require('./js/data-migrator');
 class HybridAPIServer {
     constructor() {
         this.app = express();
-        
+
         // Usar PostgreSQL si está disponible, sino SQLite local
         if (process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL) {
             console.log('🗄️ Usando PostgreSQL en Railway');
@@ -19,12 +19,12 @@ class HybridAPIServer {
             console.log('🗄️ Usando SQLite local (fallback)');
             this.searchEngine = new LocalSearchEngine();
         }
-        
+
         this.migrator = new DataMigrator();
         this.port = process.env.PORT || 3000;
         this.isInitialized = false;
-        
-        
+
+
         this.setupMiddleware();
         this.setupRoutes();
     }
@@ -60,13 +60,19 @@ class HybridAPIServer {
         this.app.use(cors());
         this.app.use(express.json());
         this.app.use(express.static('html'));
-        
+
         // Servir archivos JavaScript desde la raíz
         this.app.use('/js', express.static('js'));
-        
+
+        // Servir archivos CSS desde la raíz
+        this.app.use('/css', express.static('css'));
+
+        // Servir imágenes
+        this.app.use('/images', express.static('images'));
+
         // Servir archivos exportados
         this.app.use('/exports', express.static('exported_data'));
-        
+
         // Middleware de logging
         this.app.use((req, res, next) => {
             console.log(`🌐 ${req.method} ${req.path} - ${new Date().toISOString()}`);
@@ -110,9 +116,9 @@ class HybridAPIServer {
         // Endpoint de búsqueda de cartas (usando base de datos local)
         this.app.get('/api/pokemontcg/cards', async (req, res) => {
             try {
-                let { 
-                    q: searchTerm, 
-                    page = 1, 
+                let {
+                    q: searchTerm,
+                    page = 1,
                     pageSize = 20,
                     series,
                     set,
@@ -125,7 +131,7 @@ class HybridAPIServer {
                     sort = 'name',
                     direction = 'asc'
                 } = req.query;
-                
+
                 // Si no hay término de búsqueda, usar búsqueda amplia
                 if (!searchTerm) {
                     searchTerm = ''; // Búsqueda sin término para obtener todas las cartas
@@ -145,9 +151,9 @@ class HybridAPIServer {
                 console.log('🔍 Búsqueda con filtros:', { searchTerm, filters, page, pageSize, sort, direction });
 
                 const results = await this.searchEngine.searchCards(
-                    searchTerm, 
-                    parseInt(page), 
-                    parseInt(pageSize), 
+                    searchTerm,
+                    parseInt(page),
+                    parseInt(pageSize),
                     filters,
                     sort,
                     direction
@@ -287,11 +293,11 @@ class HybridAPIServer {
         this.app.get('/api/exports', (req, res) => {
             const fs = require('fs');
             const path = require('path');
-            
+
             try {
                 const exportsDir = path.join(__dirname, 'exported_data');
                 const files = fs.readdirSync(exportsDir);
-                
+
                 const fileInfo = files.map(file => {
                     const filePath = path.join(exportsDir, file);
                     const stats = fs.statSync(filePath);
@@ -303,7 +309,7 @@ class HybridAPIServer {
                         downloadUrl: `/exports/${file}`
                     };
                 });
-                
+
                 res.json({
                     message: 'Archivos exportados disponibles',
                     totalFiles: files.length,
@@ -321,22 +327,22 @@ class HybridAPIServer {
         this.app.get('/api/exports/:filename', (req, res) => {
             const fs = require('fs');
             const path = require('path');
-            
+
             try {
                 const filename = req.params.filename;
                 const filePath = path.join(__dirname, 'exported_data', filename);
-                
+
                 if (!fs.existsSync(filePath)) {
                     return res.status(404).json({
                         error: 'Archivo no encontrado',
                         message: `El archivo ${filename} no existe`
                     });
                 }
-                
+
                 // Configurar headers para descarga
                 res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
                 res.setHeader('Content-Type', 'application/octet-stream');
-                
+
                 // Enviar archivo
                 res.sendFile(filePath);
             } catch (error) {
@@ -362,7 +368,7 @@ class HybridAPIServer {
     // Inicializar servidor
     async init() {
         if (this.isInitialized) return;
-        
+
         try {
             console.log('🔄 Inicializando servidor híbrido...');
             await this.migrator.init();
@@ -399,20 +405,20 @@ class HybridAPIServer {
 // Inicializar servidor si se ejecuta directamente
 if (require.main === module) {
     const server = new HybridAPIServer();
-    
+
     // Manejar señales de terminación
     process.on('SIGINT', async () => {
         console.log('\n🛑 Recibida señal SIGINT, cerrando servidor...');
         await server.stop();
         process.exit(0);
     });
-    
+
     process.on('SIGTERM', async () => {
         console.log('\n🛑 Recibida señal SIGTERM, cerrando servidor...');
         await server.stop();
         process.exit(0);
     });
-    
+
     server.start().catch(error => {
         console.error('💥 Error fatal iniciando servidor:', error);
         process.exit(1);
