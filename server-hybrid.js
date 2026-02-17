@@ -22,6 +22,45 @@ function httpsGet(url) {
     });
 }
 
+// Cache para sets y series (se carga al inicio)
+var setsCache = null;
+var seriesCache = null;
+
+function loadSetsAndSeries() {
+    return Promise.all([
+        httpsGet('https://api.tcgdex.net/v2/en/sets'),
+        httpsGet('https://api.tcgdex.net/v2/en/series')
+    ]).then(function(results) {
+        var setsData = JSON.parse(results[0].body);
+        var seriesData = JSON.parse(results[1].body);
+        
+        // Crear mapa de set -> serie
+        setsCache = {};
+        seriesCache = {};
+        
+        if (Array.isArray(seriesData)) {
+            seriesData.forEach(function(s) {
+                seriesCache[s.id] = s.name || '';
+            });
+        }
+        
+        if (Array.isArray(setsData)) {
+            setsData.forEach(function(set) {
+                setsCache[set.id] = {
+                    name: set.name || '',
+                    series: (set.serie && seriesCache[set.serie.id]) || ''
+                };
+            });
+        }
+        
+        console.log('Sets cargados:', Object.keys(setsCache).length);
+        console.log('Series cargadas:', Object.keys(seriesCache).length);
+    });
+}
+
+// Inicializar cache al arrancar
+loadSetsAndSeries();
+
 var app = express();
 var PORT = process.env.PORT || 3000;
 
@@ -100,6 +139,10 @@ app.get('/api/pokemontcg/cards', function(req, res) {
             if (imageUrl && imageUrl.indexOf('/high') === -1) {
                 imageUrl = imageUrl + '/high.webp';
             }
+            
+            var setId = (card.set && card.set.id) || '';
+            var setInfo = (setsCache && setsCache[setId]) || {};
+            
             return {
                 id: card.id || '',
                 name: card.name || '',
@@ -114,9 +157,9 @@ app.get('/api/pokemontcg/cards', function(req, res) {
                 tcgplayer: {},
                 cardmarket: {},
                 set: {
-                    id: (card.set && card.set.id) || '',
-                    name: (card.set && card.set.name) || '',
-                    series: ''
+                    id: setId,
+                    name: setInfo.name || (card.set && card.set.name) || '',
+                    series: setInfo.series || ''
                 }
             };
         });
