@@ -7,20 +7,44 @@ const PostgresSearchEngine = require('./js/postgres-search-engine');
 const LocalSearchEngine = require('./js/local-search-engine');
 const DataMigrator = require('./js/data-migrator');
 
+// Handlers globales ANTES de crear el servidor para capturar errores del pool PG
+process.on('uncaughtException', (err) => {
+    console.error(' uncaughtException (no crash):', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error(' unhandledRejection (no crash):', reason?.message || reason);
+});
+
 class HybridAPIServer {
     constructor() {
         this.app = express();
 
         // Usar PostgreSQL si está disponible, sino SQLite local
+        this.searchEngine = null;
         if (process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL) {
-            console.log('🗄️ Usando PostgreSQL en Railway');
-            this.searchEngine = new PostgresSearchEngine();
-        } else {
-            console.log('🗄️ Usando SQLite local (fallback)');
-            this.searchEngine = new LocalSearchEngine();
+            try {
+                console.log(' Usando PostgreSQL en Railway');
+                this.searchEngine = new PostgresSearchEngine();
+                console.log(' PostgresSearchEngine creado');
+            } catch (pgErr) {
+                console.error(' No se pudo crear PostgresSearchEngine:', pgErr.message);
+            }
+        }
+        if (!this.searchEngine) {
+            try {
+                console.log(' Usando SQLite local (fallback)');
+                this.searchEngine = new LocalSearchEngine();
+            } catch (localErr) {
+                console.error(' No se pudo crear LocalSearchEngine:', localErr.message);
+            }
         }
 
-        this.migrator = new DataMigrator();
+        try {
+            this.migrator = new DataMigrator();
+        } catch (migErr) {
+            console.error(' No se pudo crear DataMigrator:', migErr.message);
+            this.migrator = null;
+        }
         this.port = process.env.PORT || 3000;
         this.isInitialized = false;
 
@@ -75,7 +99,7 @@ class HybridAPIServer {
 
         // Middleware de logging
         this.app.use((req, res, next) => {
-            console.log(`🌐 ${req.method} ${req.path} - ${new Date().toISOString()}`);
+            console.log(` ${req.method} ${req.path} - ${new Date().toISOString()}`);
             next();
         });
     }
@@ -116,14 +140,14 @@ class HybridAPIServer {
         // Endpoint de búsqueda de cartas (API pública como principal, PostgreSQL como intento previo)
         this.app.get('/api/pokemontcg/cards', async (req, res) => {
             const { q: searchTerm, page = 1, pageSize = 20 } = req.query;
-            console.log('🔍 Búsqueda recibida:', { searchTerm, page, pageSize });
+            console.log(' Búsqueda recibida:', { searchTerm, page, pageSize });
 
             // Usar directamente la API pública de pokemontcg.io
             try {
                 const results = await this.fallbackToPublicAPI(req.query);
                 return res.json({ success: true, ...results });
             } catch (apiError) {
-                console.error('❌ API pública falló:', apiError.message);
+                console.error(' API pública falló:', apiError.message);
                 return res.status(500).json({
                     success: false,
                     error: 'Error en búsqueda',
@@ -135,16 +159,16 @@ class HybridAPIServer {
         // Endpoint para obtener sets únicos
         this.app.get('/api/pokemontcg/sets', async (req, res) => {
             try {
-                console.log('🔍 Obteniendo sets desde PostgreSQL...');
+                console.log(' Obteniendo sets desde PostgreSQL...');
                 const sets = await this.searchEngine.getAllSets();
-                console.log('✅ Sets obtenidos:', sets.length, 'primer set:', sets[0]);
+                console.log(' Sets obtenidos:', sets.length, 'primer set:', sets[0]);
                 res.json({
                     success: true,
                     data: sets,
                     count: sets.length
                 });
             } catch (error) {
-                console.error('❌ Error obteniendo sets:', error);
+                console.error(' Error obteniendo sets:', error);
                 res.status(500).json({
                     success: false,
                     error: 'Error obteniendo sets',
@@ -163,7 +187,7 @@ class HybridAPIServer {
                     count: types.length
                 });
             } catch (error) {
-                console.error('❌ Error obteniendo tipos:', error);
+                console.error(' Error obteniendo tipos:', error);
                 res.status(500).json({
                     success: false,
                     error: 'Error obteniendo tipos',
@@ -182,7 +206,7 @@ class HybridAPIServer {
                     count: rarities.length
                 });
             } catch (error) {
-                console.error('❌ Error obteniendo rarezas:', error);
+                console.error(' Error obteniendo rarezas:', error);
                 res.status(500).json({
                     success: false,
                     error: 'Error obteniendo rarezas',
@@ -201,7 +225,7 @@ class HybridAPIServer {
                     count: subtypes.length
                 });
             } catch (error) {
-                console.error('❌ Error obteniendo subtipos:', error);
+                console.error(' Error obteniendo subtipos:', error);
                 res.status(500).json({
                     success: false,
                     error: 'Error obteniendo subtipos',
@@ -220,7 +244,7 @@ class HybridAPIServer {
                     count: languages.length
                 });
             } catch (error) {
-                console.error('❌ Error obteniendo idiomas:', error);
+                console.error(' Error obteniendo idiomas:', error);
                 res.status(500).json({
                     success: false,
                     error: 'Error obteniendo idiomas',
@@ -239,7 +263,7 @@ class HybridAPIServer {
                     count: series.length
                 });
             } catch (error) {
-                console.error('❌ Error obteniendo series:', error);
+                console.error(' Error obteniendo series:', error);
                 res.status(500).json({
                     success: false,
                     error: 'Error obteniendo series',
@@ -336,7 +360,7 @@ class HybridAPIServer {
         }
 
         const apiUrl = `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(apiQuery)}&page=${page}&pageSize=${pageSize}&orderBy=name`;
-        console.log('🌐 Fallback API URL:', apiUrl);
+        console.log(' Fallback API URL:', apiUrl);
 
         return new Promise((resolve, reject) => {
             const headers = { 'Content-Type': 'application/json' };
@@ -376,7 +400,7 @@ class HybridAPIServer {
                                 }
                             }));
 
-                            console.log(`✅ Fallback API: ${cards.length} cartas encontradas`);
+                            console.log(` Fallback API: ${cards.length} cartas encontradas`);
                             resolve({
                                 data: cards,
                                 totalCount: jsonData.totalCount || cards.length,
@@ -411,13 +435,13 @@ class HybridAPIServer {
         if (this.isInitialized) return;
 
         try {
-            console.log('🔄 Inicializando servidor híbrido...');
-            await this.migrator.init();
-            await this.searchEngine.init();
+            console.log(' Inicializando servidor híbrido...');
+            if (this.migrator) await this.migrator.init();
+            if (this.searchEngine) await this.searchEngine.init();
             this.isInitialized = true;
-            console.log('✅ Servidor híbrido inicializado correctamente');
+            console.log(' Servidor híbrido inicializado correctamente');
         } catch (error) {
-            console.error('⚠️ Error inicializando componentes (el servidor seguirá funcionando):', error.message);
+            console.error(' Error inicializando componentes (el servidor seguirá funcionando):', error.message);
             // No lanzar error - el servidor arranca igualmente
         }
     }
@@ -426,10 +450,10 @@ class HybridAPIServer {
     async start() {
         // Primero arrancar el servidor HTTP para que el healthcheck responda
         this.app.listen(this.port, '0.0.0.0', () => {
-            console.log(`🚀 Servidor híbrido ejecutándose en puerto ${this.port}`);
-            console.log(`🌐 URL: http://localhost:${this.port}`);
-            console.log(`📊 Estado: http://localhost:${this.port}/api/status`);
-            console.log(`🔍 Búsqueda: http://localhost:${this.port}/api/pokemontcg/cards?q=pikachu`);
+            console.log(` Servidor híbrido ejecutándose en puerto ${this.port}`);
+            console.log(` URL: http://localhost:${this.port}`);
+            console.log(` Estado: http://localhost:${this.port}/api/status`);
+            console.log(` Búsqueda: http://localhost:${this.port}/api/pokemontcg/cards?q=pikachu`);
         });
 
         // Luego inicializar BD (sin bloquear el arranque)
@@ -438,26 +462,18 @@ class HybridAPIServer {
 
     // Detener servidor
     async stop() {
-        console.log('🛑 Deteniendo servidor híbrido...');
+        console.log(' Deteniendo servidor híbrido...');
         // Aquí podrías agregar lógica de limpieza si es necesario
     }
 }
 
 // Inicializar servidor si se ejecuta directamente
 if (require.main === module) {
-    // Handlers globales para evitar que el proceso crashee
-    process.on('uncaughtException', (err) => {
-        console.error('💥 uncaughtException (no crash):', err.message);
-    });
-    process.on('unhandledRejection', (reason) => {
-        console.error('💥 unhandledRejection (no crash):', reason?.message || reason);
-    });
-
     const server = new HybridAPIServer();
 
     // Manejar señales de terminación
     process.on('SIGINT', async () => {
-        console.log('\n🛑 Recibida señal SIGINT, cerrando servidor...');
+        console.log('\n Deteniendo servidor...');
         await server.stop();
         process.exit(0);
     });
