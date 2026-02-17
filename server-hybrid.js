@@ -172,6 +172,8 @@ app.get('/api/pokemontcg/cards', function(req, res) {
                 var setId = (detail.set && detail.set.id) || '';
                 var setInfo = (setsCache && setsCache[setId]) || {};
                 
+                console.log('Card:', detail.name, 'SetId:', setId, 'SetInfo:', JSON.stringify(setInfo));
+                
                 return {
                     id: detail.id || '',
                     name: detail.name || '',
