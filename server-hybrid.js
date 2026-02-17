@@ -4,7 +4,6 @@ var cors = require('cors');
 var path = require('path');
 var https = require('https');
 
-// Handlers globales para evitar crashes
 process.on('uncaughtException', function(err) {
     console.error('uncaughtException:', err.message);
 });
@@ -12,62 +11,20 @@ process.on('unhandledRejection', function(reason) {
     console.error('unhandledRejection:', reason);
 });
 
-var POKEMON_API = 'https://api.pokemontcg.io/v2';
-var API_KEY = process.env.POKEMON_TCG_API_KEY || '';
-
-// Funcion para hacer GET a pokemontcg.io con headers correctos
-function pokemonApiGet(endpoint) {
+// Helper: GET request a cualquier URL HTTPS y devolver body como string
+function httpsGet(url) {
     return new Promise(function(resolve, reject) {
-        var url = POKEMON_API + endpoint;
-        console.log('API GET:', url);
-
-        var parsed = new URL(url);
-        var options = {
-            hostname: parsed.hostname,
-            path: parsed.pathname + parsed.search,
-            method: 'GET',
-            headers: {
-                'User-Agent': 'TCGtrade/1.0',
-                'Accept': 'application/json'
-            }
-        };
-        if (API_KEY) {
-            options.headers['X-Api-Key'] = API_KEY;
-        }
-
-        var req = https.request(options, function(res) {
+        https.get(url, function(res) {
             var body = '';
-            res.on('data', function(chunk) { body += chunk; });
-            res.on('end', function() {
-                console.log('API Response:', res.statusCode, 'body length:', body.length);
-                try {
-                    var json = JSON.parse(body);
-                    resolve({ status: res.statusCode, json: json });
-                } catch (e) {
-                    console.error('JSON parse error, body preview:', body.substring(0, 200));
-                    reject(new Error('JSON parse error'));
-                }
-            });
-        });
-
-        req.on('error', function(err) {
-            console.error('API request error:', err.message);
-            reject(err);
-        });
-
-        req.setTimeout(25000, function() {
-            req.destroy();
-            reject(new Error('API timeout'));
-        });
-
-        req.end();
+            res.on('data', function(c) { body += c; });
+            res.on('end', function() { resolve({ status: res.statusCode, body: body }); });
+        }).on('error', function(e) { reject(e); });
     });
 }
 
 var app = express();
 var PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static('html'));
@@ -76,153 +33,165 @@ app.use('/css', express.static('css'));
 app.use('/images', express.static('images'));
 app.use('/exports', express.static('exported_data'));
 
-// Health
 app.get('/api/health', function(req, res) {
-    res.json({ status: 'ok', version: 'v11-proxy', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', version: 'v12-tcgdex', timestamp: new Date().toISOString() });
 });
 
-// Index
 app.get('/', function(req, res) {
     res.sendFile(path.join(__dirname, 'html', 'index.html'));
 });
 
-// Status
 app.get('/api/status', function(req, res) {
-    res.json({ status: 'online', timestamp: new Date().toISOString(), searchEngine: 'Pokemon TCG API proxy' });
+    res.json({ status: 'online', timestamp: new Date().toISOString(), searchEngine: 'TCGdex API' });
 });
 
-// Test de conexion: prueba pokemontcg.io y tcgdex.net
-app.get('/api/test-connection', function(req, res) {
-    var results = {};
-    var done = 0;
-    var total = 2;
-
-    function checkDone() {
-        done++;
-        if (done === total) res.json(results);
-    }
-
-    // Test pokemontcg.io
-    https.get('https://api.pokemontcg.io/v2/types', function(response) {
-        var body = '';
-        response.on('data', function(c) { body += c; });
-        response.on('end', function() {
-            results.pokemontcg = { status: response.statusCode, bodyLength: body.length, preview: body.substring(0, 200) };
-            checkDone();
-        });
-    }).on('error', function(e) { results.pokemontcg = { error: e.message }; checkDone(); });
-
-    // Test tcgdex.net
-    https.get('https://api.tcgdex.net/v2/en/cards?name=groudon', function(response) {
-        var body = '';
-        response.on('data', function(c) { body += c; });
-        response.on('end', function() {
-            results.tcgdex = { status: response.statusCode, bodyLength: body.length, preview: body.substring(0, 200) };
-            checkDone();
-        });
-    }).on('error', function(e) { results.tcgdex = { error: e.message }; checkDone(); });
-});
-
-// BUSQUEDA DE CARTAS
+// =============================================
+// BUSQUEDA DE CARTAS via TCGdex
+// =============================================
 app.get('/api/pokemontcg/cards', function(req, res) {
     var searchTerm = req.query.q || '';
-    var page = req.query.page || 1;
-    var pageSize = req.query.pageSize || 20;
-    console.log('Busqueda:', searchTerm, 'page:', page);
+    var page = parseInt(req.query.page) || 1;
+    var pageSize = parseInt(req.query.pageSize) || 20;
+    console.log('Busqueda:', searchTerm, 'page:', page, 'pageSize:', pageSize);
 
-    var apiQuery = '';
+    // TCGdex: buscar por nombre
+    var tcgdexUrl = 'https://api.tcgdex.net/v2/en/cards';
     if (searchTerm && searchTerm.trim()) {
-        apiQuery = 'name:' + searchTerm;
+        // Si es una query tipo set.id:xxx, buscar por set
+        if (searchTerm.indexOf('set.id:') === 0) {
+            var setId = searchTerm.replace('set.id:', '');
+            tcgdexUrl = 'https://api.tcgdex.net/v2/en/sets/' + setId;
+        } else {
+            tcgdexUrl = 'https://api.tcgdex.net/v2/en/cards?name=' + encodeURIComponent(searchTerm);
+        }
     }
 
-    var endpoint = '/cards?q=' + encodeURIComponent(apiQuery) + '&page=' + page + '&pageSize=' + pageSize + '&orderBy=name';
+    console.log('TCGdex URL:', tcgdexUrl);
 
-    pokemonApiGet(endpoint).then(function(result) {
-        if (result.status < 200 || result.status >= 300) {
-            return res.status(result.status).json({ success: false, error: 'API error', status: result.status });
+    httpsGet(tcgdexUrl).then(function(result) {
+        if (result.status !== 200) {
+            console.error('TCGdex error:', result.status, result.body.substring(0, 200));
+            return res.status(500).json({ success: false, error: 'TCGdex error ' + result.status });
         }
 
-        var json = result.json;
-        var cards = (json.data || []).map(function(card) {
+        var json;
+        try { json = JSON.parse(result.body); } catch(e) {
+            return res.status(500).json({ success: false, error: 'JSON parse error' });
+        }
+
+        // TCGdex devuelve array de cartas o un set con cards
+        var rawCards = [];
+        if (Array.isArray(json)) {
+            rawCards = json;
+        } else if (json.cards) {
+            rawCards = json.cards;
+        }
+
+        var totalCount = rawCards.length;
+
+        // Paginacion manual
+        var startIdx = (page - 1) * pageSize;
+        var pagedCards = rawCards.slice(startIdx, startIdx + pageSize);
+
+        // Para cada carta necesitamos los detalles completos (TCGdex lista solo da id/name/image)
+        // Devolvemos lo que tenemos y el frontend mostrara la imagen
+        var cards = pagedCards.map(function(card) {
+            var imageUrl = card.image || '';
+            if (imageUrl && imageUrl.indexOf('/high') === -1) {
+                imageUrl = imageUrl + '/high.webp';
+            }
             return {
-                id: card.id,
-                name: card.name,
-                number: card.number || '',
-                rarity: card.rarity || 'Common',
+                id: card.id || '',
+                name: card.name || '',
+                number: card.localId || '',
+                rarity: card.rarity || 'Unknown',
                 types: card.types || [],
-                subtypes: card.subtypes || [],
-                images: card.images || {},
-                tcgplayer: card.tcgplayer || {},
-                cardmarket: card.cardmarket || {},
+                subtypes: [],
+                images: {
+                    small: imageUrl.replace('/high.webp', '/low.webp'),
+                    large: imageUrl
+                },
+                tcgplayer: {},
+                cardmarket: {},
                 set: {
                     id: (card.set && card.set.id) || '',
                     name: (card.set && card.set.name) || '',
-                    series: (card.set && card.set.series) || ''
+                    series: ''
                 }
             };
         });
 
-        var totalCount = json.totalCount || cards.length;
+        console.log('Encontradas', cards.length, 'de', totalCount, 'total');
         res.json({
             success: true,
             data: cards,
             totalCount: totalCount,
-            page: parseInt(page),
-            pageSize: parseInt(pageSize),
-            totalPages: Math.ceil(totalCount / parseInt(pageSize))
+            page: page,
+            pageSize: pageSize,
+            totalPages: Math.ceil(totalCount / pageSize)
         });
+
     }).catch(function(err) {
         console.error('Error busqueda:', err.message);
-        res.status(500).json({ success: false, error: 'Error en busqueda', message: err.message });
+        res.status(500).json({ success: false, error: err.message });
     });
 });
 
-// SETS
+// =============================================
+// SETS via TCGdex
+// =============================================
 app.get('/api/pokemontcg/sets', function(req, res) {
-    pokemonApiGet('/sets?orderBy=releaseDate').then(function(result) {
-        var sets = (result.json.data || []).map(function(s) {
-            return { id: s.id, name: s.name, series: s.series || '', cardCount: s.total || 0, releaseDate: s.releaseDate || '' };
+    httpsGet('https://api.tcgdex.net/v2/en/sets').then(function(result) {
+        var json = JSON.parse(result.body);
+        var sets = (Array.isArray(json) ? json : []).map(function(s) {
+            return {
+                id: s.id || '',
+                name: s.name || '',
+                series: s.serie ? s.serie.name || '' : '',
+                cardCount: (s.cardCount && s.cardCount.total) || 0,
+                releaseDate: '',
+                logo: s.logo || ''
+            };
         });
         res.json({ success: true, data: sets, count: sets.length });
     }).catch(function(err) {
-        res.status(500).json({ success: false, error: 'Error sets', message: err.message });
+        res.status(500).json({ success: false, error: err.message });
     });
 });
 
-// TYPES
+// =============================================
+// TYPES via TCGdex
+// =============================================
 app.get('/api/pokemontcg/types', function(req, res) {
-    pokemonApiGet('/types').then(function(result) {
-        var types = (result.json.data || []).map(function(t) {
-            return { id: t.toLowerCase(), name: t };
+    httpsGet('https://api.tcgdex.net/v2/en/types').then(function(result) {
+        var json = JSON.parse(result.body);
+        var types = (Array.isArray(json) ? json : []).map(function(t) {
+            return { id: (typeof t === 'string' ? t.toLowerCase() : t), name: (typeof t === 'string' ? t : t.name || '') };
         });
         res.json({ success: true, data: types, count: types.length });
     }).catch(function(err) {
-        res.status(500).json({ success: false, error: 'Error types', message: err.message });
+        res.status(500).json({ success: false, error: err.message });
     });
 });
 
-// RARITIES
+// =============================================
+// RARITIES via TCGdex
+// =============================================
 app.get('/api/pokemontcg/rarities', function(req, res) {
-    pokemonApiGet('/rarities').then(function(result) {
-        var rarities = (result.json.data || []).map(function(r) {
-            return { id: r.toLowerCase().replace(/\s+/g, '-'), name: r };
+    httpsGet('https://api.tcgdex.net/v2/en/rarities').then(function(result) {
+        var json = JSON.parse(result.body);
+        var rarities = (Array.isArray(json) ? json : []).map(function(r) {
+            return { id: (typeof r === 'string' ? r.toLowerCase().replace(/\s+/g, '-') : r), name: (typeof r === 'string' ? r : r.name || '') };
         });
         res.json({ success: true, data: rarities, count: rarities.length });
     }).catch(function(err) {
-        res.status(500).json({ success: false, error: 'Error rarities', message: err.message });
+        res.status(500).json({ success: false, error: err.message });
     });
 });
 
 // SUBTYPES
 app.get('/api/pokemontcg/subtypes', function(req, res) {
-    pokemonApiGet('/subtypes').then(function(result) {
-        var subtypes = (result.json.data || []).map(function(s) {
-            return { id: s.toLowerCase().replace(/\s+/g, '-'), name: s };
-        });
-        res.json({ success: true, data: subtypes, count: subtypes.length });
-    }).catch(function(err) {
-        res.status(500).json({ success: false, error: 'Error subtypes', message: err.message });
-    });
+    res.json({ success: true, data: [], count: 0 });
 });
 
 // LANGUAGES
@@ -230,35 +199,27 @@ app.get('/api/pokemontcg/languages', function(req, res) {
     res.json({
         success: true,
         data: [
-            { code: 'en', name: 'English', available: true },
-            { code: 'es', name: 'Espanol', available: true },
-            { code: 'fr', name: 'Francais', available: true },
-            { code: 'de', name: 'Deutsch', available: true },
-            { code: 'it', name: 'Italiano', available: true },
-            { code: 'pt', name: 'Portugues', available: true },
-            { code: 'ja', name: 'Japones', available: true },
-            { code: 'ko', name: 'Coreano', available: true }
+            { code: 'en', name: 'English' }, { code: 'es', name: 'Espanol' },
+            { code: 'fr', name: 'Francais' }, { code: 'de', name: 'Deutsch' },
+            { code: 'it', name: 'Italiano' }, { code: 'pt', name: 'Portugues' },
+            { code: 'ja', name: 'Japones' }, { code: 'ko', name: 'Coreano' }
         ],
         count: 8
     });
 });
 
-// SERIES
+// =============================================
+// SERIES via TCGdex
+// =============================================
 app.get('/api/pokemontcg/series', function(req, res) {
-    pokemonApiGet('/sets?orderBy=releaseDate').then(function(result) {
-        var seriesMap = {};
-        (result.json.data || []).forEach(function(s) {
-            if (s.series) {
-                if (!seriesMap[s.series]) seriesMap[s.series] = { name: s.series, cardCount: 0 };
-                seriesMap[s.series].cardCount += (s.total || 0);
-            }
-        });
-        var series = Object.values(seriesMap).map(function(s) {
-            return { id: s.name.toLowerCase().replace(/\s+/g, '-'), name: s.name, cardCount: s.cardCount };
+    httpsGet('https://api.tcgdex.net/v2/en/series').then(function(result) {
+        var json = JSON.parse(result.body);
+        var series = (Array.isArray(json) ? json : []).map(function(s) {
+            return { id: s.id || '', name: s.name || '', logo: s.logo || '' };
         });
         res.json({ success: true, data: series, count: series.length });
     }).catch(function(err) {
-        res.status(500).json({ success: false, error: 'Error series', message: err.message });
+        res.status(500).json({ success: false, error: err.message });
     });
 });
 
@@ -266,19 +227,26 @@ app.get('/api/pokemontcg/series', function(req, res) {
 app.get('/api/exports', function(req, res) {
     var fs = require('fs');
     try {
-        var exportsDir = path.join(__dirname, 'exported_data');
-        if (!fs.existsSync(exportsDir)) return res.json({ totalFiles: 0, files: [] });
-        var files = fs.readdirSync(exportsDir).map(function(file) {
-            var stats = fs.statSync(path.join(exportsDir, file));
-            return { name: file, size: stats.size, downloadUrl: '/exports/' + file };
+        var dir = path.join(__dirname, 'exported_data');
+        if (!fs.existsSync(dir)) return res.json({ totalFiles: 0, files: [] });
+        var files = fs.readdirSync(dir).map(function(f) {
+            return { name: f, size: fs.statSync(path.join(dir, f)).size, downloadUrl: '/exports/' + f };
         });
         res.json({ totalFiles: files.length, files: files });
-    } catch (error) {
-        res.status(500).json({ error: 'Error exports', message: error.message });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-// Arrancar
+// Test de conexion
+app.get('/api/test-connection', function(req, res) {
+    httpsGet('https://api.tcgdex.net/v2/en/cards?name=pikachu').then(function(result) {
+        res.json({ ok: result.status === 200, status: result.status, bodyLength: result.body.length, preview: result.body.substring(0, 200) });
+    }).catch(function(err) {
+        res.json({ ok: false, error: err.message });
+    });
+});
+
 app.listen(PORT, '0.0.0.0', function() {
-    console.log('Servidor en puerto ' + PORT);
+    console.log('Servidor TCGdex proxy en puerto ' + PORT);
 });
