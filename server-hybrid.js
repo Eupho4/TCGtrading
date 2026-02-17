@@ -91,13 +91,38 @@ app.get('/api/status', function(req, res) {
     res.json({ status: 'online', timestamp: new Date().toISOString(), searchEngine: 'Pokemon TCG API proxy' });
 });
 
-// Test de conexion
+// Test de conexion (muestra body raw para diagnostico)
 app.get('/api/test-connection', function(req, res) {
-    pokemonApiGet('/types').then(function(result) {
-        res.json({ ok: true, status: result.status, data: result.json });
-    }).catch(function(err) {
-        res.json({ ok: false, error: err.message });
+    var parsed = new URL(POKEMON_API + '/types');
+    var options = {
+        hostname: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        method: 'GET',
+        headers: {
+            'User-Agent': 'TCGtrade/1.0',
+            'Accept': 'application/json'
+        }
+    };
+    if (API_KEY) options.headers['X-Api-Key'] = API_KEY;
+
+    var req2 = https.request(options, function(response) {
+        var body = '';
+        response.on('data', function(chunk) { body += chunk; });
+        response.on('end', function() {
+            res.json({
+                status: response.statusCode,
+                headers: response.headers,
+                bodyLength: body.length,
+                bodyPreview: body.substring(0, 500),
+                isJson: body.charAt(0) === '{' || body.charAt(0) === '['
+            });
+        });
     });
+    req2.on('error', function(err) {
+        res.json({ ok: false, error: err.message, code: err.code });
+    });
+    req2.setTimeout(15000, function() { req2.destroy(); res.json({ ok: false, error: 'timeout' }); });
+    req2.end();
 });
 
 // BUSQUEDA DE CARTAS
