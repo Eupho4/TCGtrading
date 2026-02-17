@@ -132,46 +132,95 @@ app.get('/api/pokemontcg/cards', function(req, res) {
         var startIdx = (page - 1) * pageSize;
         var pagedCards = rawCards.slice(startIdx, startIdx + pageSize);
 
-        // Para cada carta necesitamos los detalles completos (TCGdex lista solo da id/name/image)
-        // Devolvemos lo que tenemos y el frontend mostrara la imagen
-        var cards = pagedCards.map(function(card) {
-            var imageUrl = card.image || '';
-            if (imageUrl && imageUrl.indexOf('/high') === -1) {
-                imageUrl = imageUrl + '/high.webp';
-            }
-            
-            var setId = (card.set && card.set.id) || '';
-            var setInfo = (setsCache && setsCache[setId]) || {};
-            
-            return {
-                id: card.id || '',
-                name: card.name || '',
-                number: card.localId || '',
-                rarity: card.rarity || 'Unknown',
-                types: card.types || [],
-                subtypes: [],
-                images: {
-                    small: imageUrl.replace('/high.webp', '/low.webp'),
-                    large: imageUrl
-                },
-                tcgplayer: {},
-                cardmarket: {},
-                set: {
-                    id: setId,
-                    name: setInfo.name || (card.set && card.set.name) || '',
-                    series: setInfo.series || ''
+        // Para cada carta necesitamos los detalles completos (obtenemos individualmente)
+        var cardPromises = pagedCards.map(function(card) {
+            return httpsGet('https://api.tcgdex.net/v2/en/cards/' + card.id).then(function(detailResult) {
+                if (detailResult.status !== 200) {
+                    // Fallback a datos basicos si falla el detalle
+                    var imageUrl = card.image || '';
+                    if (imageUrl && imageUrl.indexOf('/high') === -1) {
+                        imageUrl = imageUrl + '/high.webp';
+                    }
+                    return {
+                        id: card.id || '',
+                        name: card.name || '',
+                        number: card.localId || '',
+                        rarity: 'Unknown',
+                        types: [],
+                        subtypes: [],
+                        images: {
+                            small: imageUrl.replace('/high.webp', '/low.webp'),
+                            large: imageUrl
+                        },
+                        tcgplayer: {},
+                        cardmarket: {},
+                        set: { id: '', name: '', series: '' }
+                    };
                 }
-            };
+                
+                var detail = JSON.parse(detailResult.body);
+                var imageUrl = detail.image || '';
+                if (imageUrl && imageUrl.indexOf('/high') === -1) {
+                    imageUrl = imageUrl + '/high.webp';
+                }
+                
+                var setId = (detail.set && detail.set.id) || '';
+                var setInfo = (setsCache && setsCache[setId]) || {};
+                
+                return {
+                    id: detail.id || '',
+                    name: detail.name || '',
+                    number: detail.localId || '',
+                    rarity: detail.rarity || 'Unknown',
+                    types: detail.types || [],
+                    subtypes: detail.subtypes || [],
+                    images: {
+                        small: imageUrl.replace('/high.webp', '/low.webp'),
+                        large: imageUrl
+                    },
+                    tcgplayer: detail.pricing && detail.pricing.tcgplayer || {},
+                    cardmarket: detail.pricing && detail.pricing.cardmarket || {},
+                    set: {
+                        id: setId,
+                        name: setInfo.name || (detail.set && detail.set.name) || '',
+                        series: setInfo.series || ''
+                    }
+                };
+            }).catch(function(err) {
+                console.error('Error detalle carta', card.id, err.message);
+                // Devolver carta basica
+                var imageUrl = card.image || '';
+                if (imageUrl && imageUrl.indexOf('/high') === -1) {
+                    imageUrl = imageUrl + '/high.webp';
+                }
+                return {
+                    id: card.id || '',
+                    name: card.name || '',
+                    number: card.localId || '',
+                    rarity: 'Unknown',
+                    types: [],
+                    subtypes: [],
+                    images: {
+                        small: imageUrl.replace('/high.webp', '/low.webp'),
+                        large: imageUrl
+                    },
+                    tcgplayer: {},
+                    cardmarket: {},
+                    set: { id: '', name: '', series: '' }
+                };
+            });
         });
-
-        console.log('Encontradas', cards.length, 'de', totalCount, 'total');
-        res.json({
-            success: true,
-            data: cards,
-            totalCount: totalCount,
-            page: page,
-            pageSize: pageSize,
-            totalPages: Math.ceil(totalCount / pageSize)
+        
+        return Promise.all(cardPromises).then(function(cards) {
+            console.log('Encontradas', cards.length, 'de', totalCount, 'total');
+            res.json({
+                success: true,
+                data: cards,
+                totalCount: totalCount,
+                page: page,
+                pageSize: pageSize,
+                totalPages: Math.ceil(totalCount / pageSize)
+            });
         });
 
     }).catch(function(err) {
