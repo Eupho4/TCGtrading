@@ -108,7 +108,7 @@ class HybridAPIServer {
     setupRoutes() {
         // Healthcheck simple para Railway (siempre responde OK)
         this.app.get('/api/health', (req, res) => {
-            res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+            res.status(200).json({ status: 'ok', version: 'v7-public-api', timestamp: new Date().toISOString() });
         });
 
         // Ruta principal - servir index.html
