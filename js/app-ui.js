@@ -1172,9 +1172,7 @@ window.searchCardForTrade = async function (input, type, cardIndex) {
         try {
             // Usar el proxy en lugar de la API directa
             const encodedQuery = encodeURIComponent(query);
-            const response = await fetch(`https://tcgtrade-production.up.railway.app/api/pokemontcg/cards?q=${encodedQuery}&pageSize=10`, {
-                headers: { 'Content-Type': 'application/json' }
-            });
+            const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent('name:' + query)}&pageSize=10&orderBy=name`);
             const data = await response.json();
 
             if (data.data && data.data.length > 0) {
@@ -2686,9 +2684,7 @@ window.searchProposalCard = async function (input, uniqueId) {
     proposalSearchTimeout = setTimeout(async () => {
         try {
             const encodedQuery = encodeURIComponent(query);
-            const response = await fetch(`https://tcgtrade-production.up.railway.app/api/pokemontcg/cards?q=${encodedQuery}&pageSize=10`, {
-                headers: { 'Content-Type': 'application/json' }
-            });
+            const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent('name:' + query)}&pageSize=10&orderBy=name`);
             const data = await response.json();
 
             if (data.data && data.data.length > 0) {
@@ -6026,10 +6022,7 @@ async function fetchCards(query) {
         let response;
         try {
             response = await fetch(apiUrl, {
-                signal: controller.signal,
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+                signal: controller.signal
             });
             clearTimeout(timeoutId);
         } catch (fetchError) {
@@ -6254,12 +6247,7 @@ async function fetchAllCardsInSet(setId) {
 
     try {
         // URL corregida para usar tu función pokemon-proxy
-        const response = await fetch(`https://tcgtrade-production.up.railway.app/api/pokemontcg/cards?q=set.id:${setId}&pageSize=500`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
+        const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=set.id:${setId}&pageSize=250&orderBy=number`);
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -6517,7 +6505,7 @@ async function fetchSetsAndPopulateSearchFilters() {
     console.log('🔄 Cargando sets para filtros de búsqueda...');
 
     try {
-        const response = await fetch('https://tcgtrade-production.up.railway.app/api/pokemontcg/sets');
+        const response = await fetch('https://api.pokemontcg.io/v2/sets?orderBy=releaseDate');
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
@@ -6797,25 +6785,17 @@ async function fetchRealSetsFromDatabase() {
     console.log('🔄 Obteniendo sets reales de la base de datos...');
 
     try {
-        const response = await fetch('/api/pokemontcg/cards?q=pokemon&pageSize=1000');
+        const response = await fetch('https://api.pokemontcg.io/v2/sets?orderBy=releaseDate');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
-        const cards = data.data || [];
+        const sets = data.data || [];
 
-        // Extraer sets únicos de las cartas
-        const uniqueSets = new Map();
-        cards.forEach(card => {
-            if (card.set && card.set.name && card.set.id) {
-                uniqueSets.set(card.set.id, {
-                    id: card.set.id,
-                    name: card.set.name,
-                    series: card.set.series || 'Unknown'
-                });
-            }
-        });
-
-        const realSets = Array.from(uniqueSets.values()).sort((a, b) => a.name.localeCompare(b.name));
+        const realSets = sets.map(s => ({
+            id: s.id,
+            name: s.name,
+            series: s.series || 'Unknown'
+        })).sort((a, b) => a.name.localeCompare(b.name));
         console.log('✅ Sets reales obtenidos:', realSets.length);
         return realSets;
 
@@ -6837,12 +6817,8 @@ async function fetchSetsAndPopulateFilter() {
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
 
         // Intentar primero con menos sets para ver si funciona
-        const response = await fetch('https://tcgtrade-production.up.railway.app/api/pokemontcg/sets?pageSize=20&orderBy=-releaseDate', {
-            method: 'GET',
-            signal: controller.signal,
-            headers: {
-                'Accept': 'application/json'
-            }
+        const response = await fetch('https://api.pokemontcg.io/v2/sets?orderBy=releaseDate', {
+            signal: controller.signal
         });
 
         clearTimeout(timeoutId);
@@ -7705,7 +7681,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Prueba de conectividad API
     console.log('🔍 Probando conectividad API...');
-    fetch('https://tcgtrade-production.up.railway.app/api/status')
+    fetch('https://api.pokemontcg.io/v2/types')
         .then(response => response.json())
         .then(data => {
             console.log('✅ API conectada:', data);
@@ -9820,7 +9796,7 @@ async function loadAvailableSets() {
     try {
         // Cargar sets de ambas APIs
         const [pokemonResponse, tcgdexResponse] = await Promise.allSettled([
-            fetch('https://tcgtrade-production.up.railway.app/api/pokemontcg/sets'),
+            fetch('https://api.pokemontcg.io/v2/sets?orderBy=releaseDate'),
             fetch('/api/tcgdex/sets')
         ]);
 
@@ -9957,7 +9933,7 @@ async function loadSetCards(setId) {
             response = await fetch(`/api/tcgdex/cards?set=${setId}`);
         } else {
             // Usar API de Pokemon TCG
-            response = await fetch(`https://tcgtrade-production.up.railway.app/api/pokemontcg/cards?q=set.id:${setId}&pageSize=250&orderBy=number`);
+            response = await fetch(`https://api.pokemontcg.io/v2/cards?q=set.id:${setId}&pageSize=250&orderBy=number`);
         }
 
         if (!response.ok) throw new Error('Error al cargar cartas');
@@ -10126,7 +10102,7 @@ window.loadMoreResults = async (query) => {
     try {
         // Intentar con wildcard pero menos resultados
         const encodedQuery = encodeURIComponent(query.toLowerCase());
-        const moreUrl = `https://tcgtrade-production.up.railway.app/api/pokemontcg/cards?q=${encodedQuery}&pageSize=50`;
+        const moreUrl = `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent('name:' + query.toLowerCase())}&pageSize=50&orderBy=name`;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000); // Más tiempo
@@ -10189,18 +10165,17 @@ window.quickSearch = async () => {
     showSearchResults();
 
     try {
-        const encodedQuery = encodeURIComponent(query.toLowerCase());
-        // Búsqueda súper específica y rápida
-        const quickUrl = `https://tcgtrade-production.up.railway.app/api/pokemontcg/cards?q=${encodedQuery}&pageSize=10`;
+        const encodedQuery = encodeURIComponent('name:' + query.toLowerCase());
+        // Búsqueda directa a la API pública de pokemontcg.io
+        const quickUrl = `https://api.pokemontcg.io/v2/cards?q=${encodedQuery}&pageSize=10&orderBy=name`;
 
         console.log('🚀 Quick URL:', quickUrl);
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // Solo 5 segundos
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
         const response = await fetch(quickUrl, {
-            signal: controller.signal,
-            headers: { 'Content-Type': 'application/json' }
+            signal: controller.signal
         });
 
         clearTimeout(timeoutId);
@@ -10401,28 +10376,32 @@ function buildCardsQuery(baseQuery) {
 }
 
 function buildCardsApiUrl(baseQuery, page, pageSize) {
-    const withFilters = buildCardsQuery(baseQuery);
-    const qParam = encodeURIComponent(withFilters);
-    const pageParam = page ? `&page=${page}` : '';
-    const seriesParam = searchFiltersState.series ? `&series=${encodeURIComponent(searchFiltersState.series)}` : '';
-    const setParam = searchFiltersState.set ? `&set=${encodeURIComponent(searchFiltersState.set)}` : '';
-    const rarityParam = searchFiltersState.rarity ? `&rarity=${encodeURIComponent(searchFiltersState.rarity)}` : '';
-    const typeParam = searchFiltersState.type ? `&type=${encodeURIComponent(searchFiltersState.type)}` : '';
-    const languageParam = searchFiltersState.language ? `&language=${encodeURIComponent(searchFiltersState.language)}` : '';
-    const subtypeParam = searchFiltersState.subtype ? `&subtype=${encodeURIComponent(searchFiltersState.subtype)}` : '';
-    const hasImageParam = searchFiltersState.hasImage ? `&hasImage=${searchFiltersState.hasImage}` : '';
-    const hasPriceParam = searchFiltersState.hasPrice ? `&hasPrice=${searchFiltersState.hasPrice}` : '';
+    // Construir query para la API publica de pokemontcg.io
+    const parts = [];
+    if (baseQuery && baseQuery.trim()) {
+        parts.push('name:' + baseQuery.trim());
+    }
+    if (searchFiltersState.type) {
+        parts.push('types:' + searchFiltersState.type);
+    }
+    if (searchFiltersState.rarity) {
+        parts.push('rarity:' + searchFiltersState.rarity);
+    }
+    if (searchFiltersState.subtype) {
+        parts.push('subtypes:' + searchFiltersState.subtype);
+    }
+    if (searchFiltersState.set) {
+        parts.push('set.name:' + searchFiltersState.set);
+    }
+    if (searchFiltersState.series) {
+        parts.push('set.series:' + searchFiltersState.series);
+    }
 
-    // Usar URL relativa para que funcione tanto en local como en producción
-    const baseUrl = window.location.origin;
-    const finalUrl = `${baseUrl}/api/pokemontcg/cards?q=${qParam}${pageParam}&pageSize=${pageSize}${seriesParam}${setParam}${rarityParam}${typeParam}${languageParam}${subtypeParam}${hasImageParam}${hasPriceParam}`;
+    const qParam = encodeURIComponent(parts.join(' '));
+    const pageParam = page ? '&page=' + page : '';
+    const finalUrl = 'https://api.pokemontcg.io/v2/cards?q=' + qParam + pageParam + '&pageSize=' + pageSize + '&orderBy=name';
 
-    console.log('🔗 buildCardsApiUrl generando URL:');
-    console.log('  - Base query:', baseQuery);
-    console.log('  - With filters:', withFilters);
-    console.log('  - searchFiltersState:', searchFiltersState);
-    console.log('  - URL final:', finalUrl);
-
+    console.log('buildCardsApiUrl:', finalUrl);
     return finalUrl;
 }
 
