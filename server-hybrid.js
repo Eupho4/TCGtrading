@@ -93,6 +93,11 @@ app.get('/api/pokemontcg/cards', function(req, res) {
     var pageSize = parseInt(req.query.pageSize) || 20;
     console.log('Busqueda:', searchTerm, 'page:', page, 'pageSize:', pageSize);
 
+    // Esperar a que el cache esté listo
+    if (!setsCache) {
+        return res.status(503).json({ success: false, error: 'Loading sets cache, please retry' });
+    }
+
     // TCGdex: buscar por nombre
     var tcgdexUrl = 'https://api.tcgdex.net/v2/en/cards';
     if (searchTerm && searchTerm.trim()) {
