@@ -15,33 +15,52 @@ process.on('unhandledRejection', function(reason) {
 var POKEMON_API = 'https://api.pokemontcg.io/v2';
 var API_KEY = process.env.POKEMON_TCG_API_KEY || '';
 
-// Funcion simple para hacer GET a una URL y devolver JSON
-function httpGet(url) {
+// Funcion para hacer GET a pokemontcg.io con headers correctos
+function pokemonApiGet(endpoint) {
     return new Promise(function(resolve, reject) {
-        var headers = {};
+        var url = POKEMON_API + endpoint;
+        console.log('API GET:', url);
+
+        var parsed = new URL(url);
+        var options = {
+            hostname: parsed.hostname,
+            path: parsed.pathname + parsed.search,
+            method: 'GET',
+            headers: {
+                'User-Agent': 'TCGtrade/1.0',
+                'Accept': 'application/json'
+            }
+        };
         if (API_KEY) {
-            headers['X-Api-Key'] = API_KEY;
+            options.headers['X-Api-Key'] = API_KEY;
         }
 
-        https.get(url, { headers: headers }, function(response) {
+        var req = https.request(options, function(res) {
             var body = '';
-            response.on('data', function(chunk) {
-                body += chunk;
-            });
-            response.on('end', function() {
+            res.on('data', function(chunk) { body += chunk; });
+            res.on('end', function() {
+                console.log('API Response:', res.statusCode, 'body length:', body.length);
                 try {
                     var json = JSON.parse(body);
-                    resolve({ status: response.statusCode, data: json });
+                    resolve({ status: res.statusCode, json: json });
                 } catch (e) {
+                    console.error('JSON parse error, body preview:', body.substring(0, 200));
                     reject(new Error('JSON parse error'));
                 }
             });
-            response.on('error', function(err) {
-                reject(err);
-            });
-        }).on('error', function(err) {
+        });
+
+        req.on('error', function(err) {
+            console.error('API request error:', err.message);
             reject(err);
         });
+
+        req.setTimeout(25000, function() {
+            req.destroy();
+            reject(new Error('API timeout'));
+        });
+
+        req.end();
     });
 }
 
@@ -59,7 +78,7 @@ app.use('/exports', express.static('exported_data'));
 
 // Health
 app.get('/api/health', function(req, res) {
-    res.json({ status: 'ok', version: 'v10-simple', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', version: 'v11-proxy', timestamp: new Date().toISOString() });
 });
 
 // Index
@@ -69,38 +88,15 @@ app.get('/', function(req, res) {
 
 // Status
 app.get('/api/status', function(req, res) {
-    res.json({
-        status: 'online',
-        timestamp: new Date().toISOString(),
-        searchEngine: 'Pokemon TCG API directa',
-        databaseType: 'API directa'
-    });
+    res.json({ status: 'online', timestamp: new Date().toISOString(), searchEngine: 'Pokemon TCG API proxy' });
 });
 
-// Diagnostico de conexion saliente
+// Test de conexion
 app.get('/api/test-connection', function(req, res) {
-    var start = Date.now();
-    https.get('https://api.pokemontcg.io/v2/types', function(response) {
-        var body = '';
-        response.on('data', function(chunk) { body += chunk; });
-        response.on('end', function() {
-            var elapsed = Date.now() - start;
-            res.json({
-                ok: true,
-                status: response.statusCode,
-                elapsed: elapsed + 'ms',
-                bodyLength: body.length,
-                bodyPreview: body.substring(0, 100)
-            });
-        });
-    }).on('error', function(err) {
-        var elapsed = Date.now() - start;
-        res.json({
-            ok: false,
-            error: err.message,
-            code: err.code,
-            elapsed: elapsed + 'ms'
-        });
+    pokemonApiGet('/types').then(function(result) {
+        res.json({ ok: true, status: result.status, data: result.json });
+    }).catch(function(err) {
+        res.json({ ok: false, error: err.message });
     });
 });
 
@@ -116,16 +112,14 @@ app.get('/api/pokemontcg/cards', function(req, res) {
         apiQuery = 'name:' + searchTerm;
     }
 
-    var url = POKEMON_API + '/cards?q=' + encodeURIComponent(apiQuery) + '&page=' + page + '&pageSize=' + pageSize + '&orderBy=name';
-    console.log('API URL:', url);
+    var endpoint = '/cards?q=' + encodeURIComponent(apiQuery) + '&page=' + page + '&pageSize=' + pageSize + '&orderBy=name';
 
-    httpGet(url).then(function(result) {
+    pokemonApiGet(endpoint).then(function(result) {
         if (result.status < 200 || result.status >= 300) {
-            console.error('API error status:', result.status);
-            return res.status(500).json({ success: false, error: 'API error', message: 'Status ' + result.status });
+            return res.status(result.status).json({ success: false, error: 'API error', status: result.status });
         }
 
-        var json = result.data;
+        var json = result.json;
         var cards = (json.data || []).map(function(card) {
             return {
                 id: card.id,
@@ -146,8 +140,6 @@ app.get('/api/pokemontcg/cards', function(req, res) {
         });
 
         var totalCount = json.totalCount || cards.length;
-        console.log('Encontradas ' + cards.length + ' cartas de ' + totalCount);
-
         res.json({
             success: true,
             data: cards,
@@ -157,16 +149,16 @@ app.get('/api/pokemontcg/cards', function(req, res) {
             totalPages: Math.ceil(totalCount / parseInt(pageSize))
         });
     }).catch(function(err) {
-        console.error('Error en busqueda:', err.message);
+        console.error('Error busqueda:', err.message);
         res.status(500).json({ success: false, error: 'Error en busqueda', message: err.message });
     });
 });
 
 // SETS
 app.get('/api/pokemontcg/sets', function(req, res) {
-    httpGet(POKEMON_API + '/sets?orderBy=releaseDate').then(function(result) {
-        var sets = (result.data.data || []).map(function(s) {
-            return { id: s.id, name: s.name, series: s.series || '', cardCount: s.total || 0, source: 'pokemontcg' };
+    pokemonApiGet('/sets?orderBy=releaseDate').then(function(result) {
+        var sets = (result.json.data || []).map(function(s) {
+            return { id: s.id, name: s.name, series: s.series || '', cardCount: s.total || 0, releaseDate: s.releaseDate || '' };
         });
         res.json({ success: true, data: sets, count: sets.length });
     }).catch(function(err) {
@@ -176,8 +168,8 @@ app.get('/api/pokemontcg/sets', function(req, res) {
 
 // TYPES
 app.get('/api/pokemontcg/types', function(req, res) {
-    httpGet(POKEMON_API + '/types').then(function(result) {
-        var types = (result.data.data || []).map(function(t) {
+    pokemonApiGet('/types').then(function(result) {
+        var types = (result.json.data || []).map(function(t) {
             return { id: t.toLowerCase(), name: t };
         });
         res.json({ success: true, data: types, count: types.length });
@@ -188,8 +180,8 @@ app.get('/api/pokemontcg/types', function(req, res) {
 
 // RARITIES
 app.get('/api/pokemontcg/rarities', function(req, res) {
-    httpGet(POKEMON_API + '/rarities').then(function(result) {
-        var rarities = (result.data.data || []).map(function(r) {
+    pokemonApiGet('/rarities').then(function(result) {
+        var rarities = (result.json.data || []).map(function(r) {
             return { id: r.toLowerCase().replace(/\s+/g, '-'), name: r };
         });
         res.json({ success: true, data: rarities, count: rarities.length });
@@ -200,8 +192,8 @@ app.get('/api/pokemontcg/rarities', function(req, res) {
 
 // SUBTYPES
 app.get('/api/pokemontcg/subtypes', function(req, res) {
-    httpGet(POKEMON_API + '/subtypes').then(function(result) {
-        var subtypes = (result.data.data || []).map(function(s) {
+    pokemonApiGet('/subtypes').then(function(result) {
+        var subtypes = (result.json.data || []).map(function(s) {
             return { id: s.toLowerCase().replace(/\s+/g, '-'), name: s };
         });
         res.json({ success: true, data: subtypes, count: subtypes.length });
@@ -230,13 +222,11 @@ app.get('/api/pokemontcg/languages', function(req, res) {
 
 // SERIES
 app.get('/api/pokemontcg/series', function(req, res) {
-    httpGet(POKEMON_API + '/sets?orderBy=releaseDate').then(function(result) {
+    pokemonApiGet('/sets?orderBy=releaseDate').then(function(result) {
         var seriesMap = {};
-        (result.data.data || []).forEach(function(s) {
+        (result.json.data || []).forEach(function(s) {
             if (s.series) {
-                if (!seriesMap[s.series]) {
-                    seriesMap[s.series] = { name: s.series, cardCount: 0 };
-                }
+                if (!seriesMap[s.series]) seriesMap[s.series] = { name: s.series, cardCount: 0 };
                 seriesMap[s.series].cardCount += (s.total || 0);
             }
         });
@@ -254,9 +244,7 @@ app.get('/api/exports', function(req, res) {
     var fs = require('fs');
     try {
         var exportsDir = path.join(__dirname, 'exported_data');
-        if (!fs.existsSync(exportsDir)) {
-            return res.json({ totalFiles: 0, files: [] });
-        }
+        if (!fs.existsSync(exportsDir)) return res.json({ totalFiles: 0, files: [] });
         var files = fs.readdirSync(exportsDir).map(function(file) {
             var stats = fs.statSync(path.join(exportsDir, file));
             return { name: file, size: stats.size, downloadUrl: '/exports/' + file };
@@ -267,7 +255,7 @@ app.get('/api/exports', function(req, res) {
     }
 });
 
-// Arrancar servidor
+// Arrancar
 app.listen(PORT, '0.0.0.0', function() {
     console.log('Servidor en puerto ' + PORT);
 });
