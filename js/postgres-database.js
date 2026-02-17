@@ -13,10 +13,43 @@ class PostgresCardDatabase {
             connectionString: this.connectionString,
             ssl: {
                 rejectUnauthorized: false // Necesario para Railway
-            }
+            },
+            max: 10,
+            min: 1,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+            keepAlive: true,
+            keepAliveInitialDelayMillis: 10000
+        });
+
+        // Manejar errores del pool para evitar crashes
+        this.pool.on('error', (err) => {
+            console.error('⚠️ Error inesperado en pool PostgreSQL:', err.message);
         });
         
         this.isInitialized = false;
+    }
+
+    // Ejecutar query con retry automático ante ECONNRESET
+    async queryWithRetry(sql, params = [], retries = 2) {
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            try {
+                return await this.pool.query(sql, params);
+            } catch (error) {
+                const isConnectionError = error.message.includes('ECONNRESET') ||
+                    error.message.includes('Connection terminated') ||
+                    error.message.includes('connection lost') ||
+                    error.code === 'ECONNRESET' ||
+                    error.code === '57P01';
+                
+                if (isConnectionError && attempt < retries) {
+                    console.warn(`⚠️ Conexión perdida (intento ${attempt + 1}/${retries + 1}), reintentando...`);
+                    await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+                    continue;
+                }
+                throw error;
+            }
+        }
     }
 
     // Inicializar base de datos
@@ -251,14 +284,14 @@ class PostgresCardDatabase {
                 LIMIT $${paramCount++} OFFSET $${paramCount++}
             `;
             
-            const cardsResult = await this.pool.query(cardsQuery, [...params, pageSizeNum, offset]);
+            const cardsResult = await this.queryWithRetry(cardsQuery, [...params, pageSizeNum, offset]);
 
             // Obtener total de resultados
             const countQuery = `
                 SELECT COUNT(*) as count FROM cards 
                 ${whereClause}
             `;
-            const countResult = await this.pool.query(countQuery, params);
+            const countResult = await this.queryWithRetry(countQuery, params);
 
             // Procesar resultados y formatear para compatibilidad con API externa
             const processedCards = cardsResult.rows.map(card => {
@@ -317,7 +350,7 @@ class PostgresCardDatabase {
     // Obtener carta por ID
     async getCardById(id) {
         try {
-            const result = await this.pool.query('SELECT * FROM cards WHERE id = $1', [id]);
+            const result = await this.queryWithRetry('SELECT * FROM cards WHERE id = $1', [id]);
             if (result.rows.length > 0) {
                 const card = result.rows[0];
                 return {
@@ -336,7 +369,7 @@ class PostgresCardDatabase {
     // Obtener sets disponibles
     async getSets() {
         try {
-            const result = await this.pool.query('SELECT * FROM sets ORDER BY name');
+            const result = await this.queryWithRetry('SELECT * FROM sets ORDER BY name');
             return result.rows.map(set => ({
                 ...set,
                 images: set.images ? JSON.parse(set.images) : null
@@ -350,9 +383,9 @@ class PostgresCardDatabase {
     // Obtener estadísticas de la base de datos
     async getStats() {
         try {
-            const cardCountResult = await this.pool.query('SELECT COUNT(*) as count FROM cards');
-            const setCountResult = await this.pool.query('SELECT COUNT(*) as count FROM sets');
-            const lastUpdateResult = await this.pool.query('SELECT MAX(last_updated) as last FROM cards');
+            const cardCountResult = await this.queryWithRetry('SELECT COUNT(*) as count FROM cards');
+            const setCountResult = await this.queryWithRetry('SELECT COUNT(*) as count FROM sets');
+            const lastUpdateResult = await this.queryWithRetry('SELECT MAX(last_updated) as last FROM cards');
             
             return {
                 totalCards: parseInt(cardCountResult.rows[0].count),
@@ -369,7 +402,7 @@ class PostgresCardDatabase {
     // Obtener todas las series únicas
     async getAllSets() {
         try {
-            const result = await this.pool.query(`
+            const result = await this.queryWithRetry(`
                 SELECT DISTINCT set_name, 
                        COUNT(*) as card_count,
                        MIN(id) as first_card_id
@@ -394,7 +427,7 @@ class PostgresCardDatabase {
     // Obtener todos los tipos únicos
     async getAllTypes() {
         try {
-            const result = await this.pool.query(`
+            const result = await this.queryWithRetry(`
                 SELECT unnest(types) as type, COUNT(*) as card_count
                 FROM cards 
                 WHERE types IS NOT NULL AND array_length(types, 1) > 0
@@ -417,7 +450,7 @@ class PostgresCardDatabase {
     // Obtener todas las rarezas únicas
     async getAllRarities() {
         try {
-            const result = await this.pool.query(`
+            const result = await this.queryWithRetry(`
                 SELECT rarity, COUNT(*) as card_count
                 FROM cards 
                 WHERE rarity IS NOT NULL AND rarity != '' 
@@ -438,7 +471,7 @@ class PostgresCardDatabase {
     // Obtener todos los subtipos únicos
     async getAllSubtypes() {
         try {
-            const result = await this.pool.query(`
+            const result = await this.queryWithRetry(`
                 SELECT unnest(subtypes) as subtype, COUNT(*) as card_count
                 FROM cards 
                 WHERE subtypes IS NOT NULL AND array_length(subtypes, 1) > 0
@@ -462,7 +495,7 @@ class PostgresCardDatabase {
     async getAllLanguages() {
         try {
             // Idiomas disponibles en los datos
-            const result = await this.pool.query('SELECT DISTINCT id FROM cards WHERE id LIKE \'%-%\'');
+            const result = await this.queryWithRetry('SELECT DISTINCT id FROM cards WHERE id LIKE \'%-%\'');
             const dataLanguages = new Set();
             result.rows.forEach(row => {
                 const parts = row.id.split('-');
@@ -501,7 +534,7 @@ class PostgresCardDatabase {
     // Obtener todas las series únicas
     async getAllSeries() {
         try {
-            const result = await this.pool.query(`
+            const result = await this.queryWithRetry(`
                 SELECT DISTINCT set_name, COUNT(*) as card_count
                 FROM cards 
                 WHERE set_name IS NOT NULL AND set_name != '' 
