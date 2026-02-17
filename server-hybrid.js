@@ -479,6 +479,14 @@ class HybridAPIServer {
 
 // Inicializar servidor si se ejecuta directamente
 if (require.main === module) {
+    // Handlers globales para evitar que el proceso crashee
+    process.on('uncaughtException', (err) => {
+        console.error('💥 uncaughtException (no crash):', err.message);
+    });
+    process.on('unhandledRejection', (reason) => {
+        console.error('💥 unhandledRejection (no crash):', reason?.message || reason);
+    });
+
     const server = new HybridAPIServer();
 
     // Manejar señales de terminación
