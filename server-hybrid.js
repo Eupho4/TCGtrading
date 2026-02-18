@@ -167,88 +167,34 @@ app.get('/api/pokemontcg/cards', function(req, res) {
                 setsMap[set.id] = set;
             });
 
-            // Ahora obtener detalles de cada carta
-            var cardPromises = pagedCards.map(function(card) {
-                return httpsGet('https://api.tcgdex.net/v2/en/cards/' + card.id).then(function(detailResult) {
-                    if (detailResult.status !== 200) {
-                        // Fallback a datos basicos
-                        var imageUrl = card.image || '';
-                        if (imageUrl && imageUrl.indexOf('/high') === -1) {
-                            imageUrl = imageUrl + '/high.webp';
-                        }
-                        return {
-                            id: card.id || '',
-                            name: card.name || '',
-                            number: card.localId || '',
-                            rarity: 'Unknown',
-                            types: [],
-                            subtypes: [],
-                            images: {
-                                small: imageUrl.replace('/high.webp', '/low.webp'),
-                                large: imageUrl
-                            },
-                            tcgplayer: {},
-                            cardmarket: {},
-                            set: { id: '', name: '', series: '' }
-                        };
+            // Simplificar: devolver datos básicos de carta con set name (sin series por ahora)
+            var cards = pagedCards.map(function(card) {
+                var imageUrl = card.image || '';
+                if (imageUrl && imageUrl.indexOf('/high') === -1) {
+                    imageUrl = imageUrl + '/high.webp';
+                }
+                
+                return {
+                    id: card.id || '',
+                    name: card.name || '',
+                    number: card.localId || '',
+                    rarity: 'Unknown',
+                    types: [],
+                    subtypes: [],
+                    images: {
+                        small: imageUrl.replace('/high.webp', '/low.webp'),
+                        large: imageUrl
+                    },
+                    tcgplayer: {},
+                    cardmarket: {},
+                    set: {
+                        id: (card.set && card.set.id) || '',
+                        name: (card.set && card.set.name) || '',
+                        series: '' // Temporalmente vacío hasta arreglar
                     }
-                    
-                    var detail = JSON.parse(detailResult.body);
-                    var imageUrl = detail.image || '';
-                    if (imageUrl && imageUrl.indexOf('/high') === -1) {
-                        imageUrl = imageUrl + '/high.webp';
-                    }
-                    
-                    var setId = (detail.set && detail.set.id) || '';
-                    var setInfo = setsMap[setId] || {};
-                    
-                    console.log('Card:', detail.name, 'SetId:', setId, 'Series:', setInfo.series);
-                    
-                    return {
-                        id: detail.id || '',
-                        name: detail.name || '',
-                        number: detail.localId || '',
-                        rarity: detail.rarity || 'Unknown',
-                        types: detail.types || [],
-                        subtypes: detail.subtypes || [],
-                        images: {
-                            small: imageUrl.replace('/high.webp', '/low.webp'),
-                            large: imageUrl
-                        },
-                        tcgplayer: detail.pricing && detail.pricing.tcgplayer || {},
-                        cardmarket: detail.pricing && detail.pricing.cardmarket || {},
-                        set: {
-                            id: setId,
-                            name: setInfo.name || (detail.set && detail.set.name) || '',
-                            series: setInfo.series
-                        }
-                    };
-                }).catch(function(err) {
-                    console.error('Error detalle carta', card.id, err.message);
-                    // Devolver carta basica
-                    var imageUrl = card.image || '';
-                    if (imageUrl && imageUrl.indexOf('/high') === -1) {
-                        imageUrl = imageUrl + '/high.webp';
-                    }
-                    return {
-                        id: card.id || '',
-                        name: card.name || '',
-                        number: card.localId || '',
-                        rarity: 'Unknown',
-                        types: [],
-                        subtypes: [],
-                        images: {
-                            small: imageUrl.replace('/high.webp', '/low.webp'),
-                            large: imageUrl
-                        },
-                        tcgplayer: {},
-                        cardmarket: {},
-                        set: { id: '', name: '', series: '' }
-                    };
-                });
+                };
             });
 
-            return Promise.all(cardPromises).then(function(cards) {
             console.log('Encontradas', cards.length, 'de', totalCount, 'total');
             res.json({
                 success: true,
@@ -321,6 +267,250 @@ app.get('/api/pokemontcg/rarities', function(req, res) {
 // SUBTYPES
 app.get('/api/pokemontcg/subtypes', function(req, res) {
     res.json({ success: true, data: [], count: 0 });
+});
+
+// Endpoint de diagnóstico
+app.get('/api/pokemontcg/test-connection', function(req, res) {
+    res.json({
+        success: true,
+        message: 'Servidor funcionando correctamente',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
+        database: process.env.DATABASE_URL ? 'Configurada' : 'No configurada',
+        pokemonApi: process.env.POKEMON_TCG_API_KEY ? 'Configurada' : 'No configurada'
+    });
+});
+
+// Endpoint de migración (temporal - eliminar después de usar)
+app.post('/api/pokemontcg/migrate', async function(req, res) {
+    console.log('🚀 Iniciando migración desde Railway...');
+    
+    try {
+        // Importar funciones de migración
+        const { Pool } = require('pg');
+        const https = require('https');
+        
+        const pool = new Pool({
+            connectionString: process.env.DATABASE_URL,
+            ssl: { rejectUnauthorized: false }
+        });
+        
+        // Helper para API
+        function pokemonApiGet(endpoint) {
+            return new Promise((resolve, reject) => {
+                const url = 'https://api.pokemontcg.io/v2' + endpoint;
+                const options = {
+                    headers: {
+                        'X-Api-Key': process.env.POKEMON_TCG_API_KEY,
+                        'User-Agent': 'TCGtrade-Migration/1.0'
+                    }
+                };
+                
+                const req = https.get(url, options, (res) => {
+                    let body = '';
+                    res.on('data', chunk => body += chunk);
+                    res.on('end', () => {
+                        if (res.statusCode === 200) {
+                            try {
+                                resolve(JSON.parse(body));
+                            } catch (e) {
+                                reject(new Error('JSON parse error'));
+                            }
+                        } else {
+                            reject(new Error(`HTTP ${res.statusCode}`));
+                        }
+                    });
+                });
+                
+                req.on('error', reject);
+                req.setTimeout(30000, () => {
+                    req.destroy();
+                    reject(new Error('Timeout'));
+                });
+            });
+        }
+        
+        // Limpiar BD
+        await pool.query('DROP TABLE IF EXISTS cards CASCADE');
+        await pool.query('DROP TABLE IF EXISTS sets CASCADE');
+        await pool.query('DROP TABLE IF EXISTS series CASCADE');
+        await pool.query('DROP TABLE IF EXISTS types CASCADE');
+        await pool.query('DROP TABLE IF EXISTS rarities CASCADE');
+        
+        // Crear tablas
+        await pool.query(`
+            CREATE TABLE series (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                logo VARCHAR(255)
+            )
+        `);
+        
+        await pool.query(`
+            CREATE TABLE sets (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                series_id VARCHAR(50) REFERENCES series(id),
+                printed_total INTEGER,
+                total INTEGER,
+                release_date DATE,
+                logo VARCHAR(255),
+                symbol VARCHAR(255)
+            )
+        `);
+        
+        await pool.query(`
+            CREATE TABLE types (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(50) NOT NULL
+            )
+        `);
+        
+        await pool.query(`
+            CREATE TABLE rarities (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(50) NOT NULL
+            )
+        `);
+        
+        await pool.query(`
+            CREATE TABLE cards (
+                id VARCHAR(100) PRIMARY KEY,
+                name VARCHAR(200) NOT NULL,
+                number VARCHAR(20),
+                set_id VARCHAR(50) REFERENCES sets(id),
+                rarity_id VARCHAR(50) REFERENCES rarities(id),
+                hp INTEGER,
+                types TEXT[],
+                subtypes TEXT[],
+                rules TEXT[],
+                images JSONB,
+                tcgplayer JSONB,
+                cardmarket JSONB,
+                legal JSONB,
+                artist VARCHAR(100),
+                flavor_text TEXT,
+                national_pokedex_numbers INTEGER[],
+                attacks JSONB,
+                weaknesses JSONB,
+                resistances JSONB,
+                retreat_cost TEXT[],
+                converted_retreat_cost INTEGER
+            )
+        `);
+        
+        // Migrar series
+        console.log('📚 Migrando series...');
+        const seriesData = await pokemonApiGet('/series');
+        for (const series of seriesData.data) {
+            await pool.query(
+                'INSERT INTO series (id, name, logo) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+                [series.id, series.name, series.logo]
+            );
+        }
+        
+        // Migrar sets
+        console.log('📦 Migrando sets...');
+        let allSets = [];
+        let page = 1;
+        let pageSize = 250;
+        let hasMore = true;
+        
+        while (hasMore) {
+            const setsData = await pokemonApiGet(`/sets?page=${page}&pageSize=${pageSize}`);
+            allSets = allSets.concat(setsData.data);
+            hasMore = setsData.data.length === pageSize;
+            page++;
+            if (hasMore) await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        for (const set of allSets) {
+            await pool.query(`
+                INSERT INTO sets (id, name, series_id, printed_total, total, release_date, logo, symbol)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING
+            `, [set.id, set.name, set.series.id, set.printedTotal, set.total, set.releaseDate, set.logo, set.symbol]);
+        }
+        
+        // Migrar tipos y rarezas
+        console.log('🏷️ Migrando tipos y rarezas...');
+        const typesData = await pokemonApiGet('/types');
+        for (const type of typesData.data) {
+            await pool.query('INSERT INTO types (id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [type.toLowerCase(), type]);
+        }
+        
+        const raritiesData = await pokemonApiGet('/rarities');
+        for (const rarity of raritiesData.data) {
+            const rarityId = rarity.toLowerCase().replace(/\s+/g, '-');
+            await pool.query('INSERT INTO rarities (id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [rarityId, rarity]);
+        }
+        
+        // Migrar cartas (limitado a 1000 por tiempo)
+        console.log('🃏 Migrando primeras 1000 cartas...');
+        const cardsData = await pokemonApiGet('/cards?pageSize=1000');
+        let cardsMigrated = 0;
+        
+        for (const card of cardsData.data) {
+            const types = card.types || [];
+            const subtypes = card.subtypes || [];
+            const rules = card.rules || [];
+            const nationalPokedexNumbers = card.nationalPokedexNumbers || [];
+            const retreatCost = card.retreatCost || [];
+            const rarityId = card.rarity ? card.rarity.toLowerCase().replace(/\s+/g, '-') : null;
+            
+            await pool.query(`
+                INSERT INTO cards (
+                    id, name, number, set_id, rarity_id, hp, types, subtypes,
+                    rules, images, tcgplayer, cardmarket, legal, artist,
+                    flavor_text, national_pokedex_numbers, attacks, weaknesses,
+                    resistances, retreat_cost, converted_retreat_cost
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                ON CONFLICT DO NOTHING
+            `, [
+                card.id, card.name, card.number, card.set.id, rarityId, card.hp,
+                types, subtypes, rules, card.images, card.tcgplayer, card.cardmarket,
+                card.legal, card.artist, card.flavorText, nationalPokedexNumbers,
+                card.attacks, card.weaknesses, card.resistances, retreatCost, card.convertedRetreatCost
+            ]);
+            
+            cardsMigrated++;
+        }
+        
+        // Estadísticas
+        const stats = await pool.query(`
+            SELECT 
+                (SELECT COUNT(*) FROM series) as series_count,
+                (SELECT COUNT(*) FROM sets) as sets_count,
+                (SELECT COUNT(*) FROM types) as types_count,
+                (SELECT COUNT(*) FROM rarities) as rarities_count,
+                (SELECT COUNT(*) FROM cards) as cards_count
+        `);
+        
+        const s = stats.rows[0];
+        
+        await pool.end();
+        
+        res.json({
+            success: true,
+            message: 'Migración completada',
+            stats: {
+                series: s.series_count,
+                sets: s.sets_count,
+                types: s.types_count,
+                rarities: s.rarities_count,
+                cards: s.cards_count
+            },
+            note: 'Solo se migraron las primeras 1000 cartas por tiempo. Ejecutar nuevamente para más.'
+        });
+        
+    } catch (error) {
+        console.error('❌ Error en migración:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 });
 
 // LANGUAGES

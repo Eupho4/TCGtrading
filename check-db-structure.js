@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { Pool } = require('pg');
 
 async function checkDatabaseStructure() {
@@ -11,8 +12,11 @@ async function checkDatabaseStructure() {
     const pool = new Pool({
         connectionString: connectionString,
         ssl: {
-            rejectUnauthorized: false
-        }
+            rejectUnauthorized: false,
+            require: true
+        },
+        connectionTimeoutMillis: 10000,
+        query_timeout: 30000
     });
 
     try {
