@@ -8,7 +8,8 @@
     "start": "node server-hybrid.js",
     "dev": "node server-hybrid.js",
     "build": "echo 'Build completed for Railway'",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prod": "NODE_ENV=production node server-hybrid.js"
   },
   "dependencies": {
     "@tcgdex/sdk": "^2.7.1",
