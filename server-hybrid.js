@@ -137,17 +137,90 @@ app.get('/api/pokemontcg/cards', function(req, res) {
         var startIdx = (page - 1) * pageSize;
         var pagedCards = rawCards.slice(startIdx, startIdx + pageSize);
 
-        // Para cada carta necesitamos los detalles completos y la info del set
-        var cardPromises = pagedCards.map(function(card) {
-            return Promise.all([
-                httpsGet('https://api.tcgdex.net/v2/en/cards/' + card.id),
-                httpsGet('https://api.tcgdex.net/v2/en/sets/' + card.set.id)
-            ]).then(function(results) {
-                var detailResult = results[0];
-                var setResult = results[1];
-                
-                if (detailResult.status !== 200) {
-                    // Fallback a datos basicos si falla el detalle
+        // Obtener sets únicos para no repetir peticiones
+        var uniqueSetIds = [...new Set(pagedCards.map(function(card) { return card.set.id; }))];
+        var setPromises = uniqueSetIds.map(function(setId) {
+            return httpsGet('https://api.tcgdex.net/v2/en/sets/' + setId).then(function(result) {
+                if (result.status === 200) {
+                    var setInfo = JSON.parse(result.body);
+                    return {
+                        id: setId,
+                        name: setInfo.name || '',
+                        series: (setInfo.serie && setInfo.serie.name) || ''
+                    };
+                }
+                return { id: setId, name: '', series: '' };
+            }).catch(function() {
+                return { id: setId, name: '', series: '' };
+            });
+        });
+
+        // Esperar a que todos los sets se carguen
+        return Promise.all(setPromises).then(function(setsInfo) {
+            var setsMap = {};
+            setsInfo.forEach(function(set) {
+                setsMap[set.id] = set;
+            });
+
+            // Ahora obtener detalles de cada carta
+            var cardPromises = pagedCards.map(function(card) {
+                return httpsGet('https://api.tcgdex.net/v2/en/cards/' + card.id).then(function(detailResult) {
+                    if (detailResult.status !== 200) {
+                        // Fallback a datos basicos
+                        var imageUrl = card.image || '';
+                        if (imageUrl && imageUrl.indexOf('/high') === -1) {
+                            imageUrl = imageUrl + '/high.webp';
+                        }
+                        return {
+                            id: card.id || '',
+                            name: card.name || '',
+                            number: card.localId || '',
+                            rarity: 'Unknown',
+                            types: [],
+                            subtypes: [],
+                            images: {
+                                small: imageUrl.replace('/high.webp', '/low.webp'),
+                                large: imageUrl
+                            },
+                            tcgplayer: {},
+                            cardmarket: {},
+                            set: { id: '', name: '', series: '' }
+                        };
+                    }
+                    
+                    var detail = JSON.parse(detailResult.body);
+                    var imageUrl = detail.image || '';
+                    if (imageUrl && imageUrl.indexOf('/high') === -1) {
+                        imageUrl = imageUrl + '/high.webp';
+                    }
+                    
+                    var setId = (detail.set && detail.set.id) || '';
+                    var setInfo = setsMap[setId] || {};
+                    
+                    console.log('Card:', detail.name, 'SetId:', setId, 'Series:', setInfo.series);
+                    
+                    return {
+                        id: detail.id || '',
+                        name: detail.name || '',
+                        number: detail.localId || '',
+                        rarity: detail.rarity || 'Unknown',
+                        types: detail.types || [],
+                        subtypes: detail.subtypes || [],
+                        images: {
+                            small: imageUrl.replace('/high.webp', '/low.webp'),
+                            large: imageUrl
+                        },
+                        tcgplayer: detail.pricing && detail.pricing.tcgplayer || {},
+                        cardmarket: detail.pricing && detail.pricing.cardmarket || {},
+                        set: {
+                            id: setId,
+                            name: setInfo.name || (detail.set && detail.set.name) || '',
+                            series: setInfo.series
+                        }
+                    };
+                }).catch(function(err) {
+                    console.error('Error detalle carta', card.id, err.message);
+                    // Devolver carta basica
                     var imageUrl = card.image || '';
                     if (imageUrl && imageUrl.indexOf('/high') === -1) {
                         imageUrl = imageUrl + '/high.webp';
@@ -167,71 +240,10 @@ app.get('/api/pokemontcg/cards', function(req, res) {
                         cardmarket: {},
                         set: { id: '', name: '', series: '' }
                     };
-                }
-                
-                var detail = JSON.parse(detailResult.body);
-                var imageUrl = detail.image || '';
-                if (imageUrl && imageUrl.indexOf('/high') === -1) {
-                    imageUrl = imageUrl + '/high.webp';
-                }
-                
-                var setId = (detail.set && detail.set.id) || '';
-                var setName = (detail.set && detail.set.name) || '';
-                var seriesName = '';
-                
-                // Obtener serie del set (que sí la tiene)
-                if (setResult.status === 200) {
-                    var setInfo = JSON.parse(setResult.body);
-                    seriesName = (setInfo.serie && setInfo.serie.name) || '';
-                }
-                
-                console.log('Card:', detail.name, 'SetId:', setId, 'Series:', seriesName);
-                
-                return {
-                    id: detail.id || '',
-                    name: detail.name || '',
-                    number: detail.localId || '',
-                    rarity: detail.rarity || 'Unknown',
-                    types: detail.types || [],
-                    subtypes: detail.subtypes || [],
-                    images: {
-                        small: imageUrl.replace('/high.webp', '/low.webp'),
-                        large: imageUrl
-                    },
-                    tcgplayer: detail.pricing && detail.pricing.tcgplayer || {},
-                    cardmarket: detail.pricing && detail.pricing.cardmarket || {},
-                    set: {
-                        id: setId,
-                        name: setName,
-                        series: seriesName
-                    }
-                };
-            }).catch(function(err) {
-                console.error('Error detalle carta', card.id, err.message);
-                // Devolver carta basica
-                var imageUrl = card.image || '';
-                if (imageUrl && imageUrl.indexOf('/high') === -1) {
-                    imageUrl = imageUrl + '/high.webp';
-                }
-                return {
-                    id: card.id || '',
-                    name: card.name || '',
-                    number: card.localId || '',
-                    rarity: 'Unknown',
-                    types: [],
-                    subtypes: [],
-                    images: {
-                        small: imageUrl.replace('/high.webp', '/low.webp'),
-                        large: imageUrl
-                    },
-                    tcgplayer: {},
-                    cardmarket: {},
-                    set: { id: '', name: '', series: '' }
-                };
+                });
             });
-        });
-        
-        return Promise.all(cardPromises).then(function(cards) {
+
+            return Promise.all(cardPromises).then(function(cards) {
             console.log('Encontradas', cards.length, 'de', totalCount, 'total');
             res.json({
                 success: true,
