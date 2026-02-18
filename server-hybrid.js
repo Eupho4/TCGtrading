@@ -138,7 +138,12 @@ app.get('/api/pokemontcg/cards', function(req, res) {
         var pagedCards = rawCards.slice(startIdx, startIdx + pageSize);
 
         // Obtener sets únicos para no repetir peticiones
-        var uniqueSetIds = [...new Set(pagedCards.map(function(card) { return card.set.id; }))];
+        var uniqueSetIds = [];
+        pagedCards.forEach(function(card) {
+            if (card.set && card.set.id && uniqueSetIds.indexOf(card.set.id) === -1) {
+                uniqueSetIds.push(card.set.id);
+            }
+        });
         var setPromises = uniqueSetIds.map(function(setId) {
             return httpsGet('https://api.tcgdex.net/v2/en/sets/' + setId).then(function(result) {
                 if (result.status === 200) {
