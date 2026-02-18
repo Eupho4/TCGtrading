@@ -85,14 +85,21 @@ app.get('/api/status', function(req, res) {
 });
 
 // =============================================
-// BUSQUEDA DE CARTAS via TCGdex
+// BUSQUEDA DE CARTAS via PostgreSQL database
 // =============================================
-app.get('/api/pokemontcg/cards', function(req, res) {
+app.get('/api/pokemontcg/cards', async function(req, res) {
     var searchTerm = req.query.q || '';
     var page = parseInt(req.query.page) || 1;
     var pageSize = parseInt(req.query.pageSize) || 20;
     console.log('Busqueda:', searchTerm, 'page:', page, 'pageSize:', pageSize);
 
+    const pool = new Pool({
+        user: process.env.DB_USER,
+        host: process.env.DB_HOST,
+        database: process.env.DB_NAME,
+        password: process.env.DB_PASSWORD,
+        port: process.env.DB_PORT,
+    });
     // Esperar a que el cache esté listo
     if (!setsCache) {
         return res.status(503).json({ success: false, error: 'Loading sets cache, please retry' });
@@ -291,7 +298,7 @@ app.post('/api/pokemontcg/migrate', async function(req, res) {
         const https = require('https');
         
         const pool = new Pool({
-            connectionString: process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL,
+            connectionString: process.env.DATABASE_URL,
             ssl: { rejectUnauthorized: false }
         });
         
