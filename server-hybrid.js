@@ -291,7 +291,7 @@ app.post('/api/pokemontcg/migrate', async function(req, res) {
         const https = require('https');
         
         const pool = new Pool({
-            connectionString: process.env.DATABASE_URL,
+            connectionString: process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL,
             ssl: { rejectUnauthorized: false }
         });
         
