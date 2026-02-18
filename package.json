@@ -2,7 +2,7 @@
   "name": "tcgtrade-app",
   "version": "1.0.0",
   "description": "Aplicación de intercambio de cartas Pokémon",
-  "main": "server.js",
+  "main": "server-hybrid.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server-hybrid.js",
