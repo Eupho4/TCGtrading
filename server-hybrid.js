@@ -446,12 +446,13 @@ app.post('/api/pokemontcg/migrate', async function(req, res) {
                 [rarityId, rarity]);
         }
         
-        // Migrar cartas (limitado a 1000 por tiempo)
-        console.log('🃏 Migrando primeras 1000 cartas...');
-        const cardsData = await pokemonApiGet('/cards?pageSize=1000');
+        // Migrar cartas (limitado a 100 por tiempo para evitar timeout)
+        console.log('🃏 Migrando primeras 100 cartas...');
+        const cardsData = await pokemonApiGet('/cards?pageSize=100');
         let cardsMigrated = 0;
         
-        for (const card of cardsData.data) {
+        // Preparar todos los inserts en batch para mayor eficiencia
+        const cardValues = cardsData.data.map(card => {
             const types = card.types || [];
             const subtypes = card.subtypes || [];
             const rules = card.rules || [];
@@ -459,20 +460,27 @@ app.post('/api/pokemontcg/migrate', async function(req, res) {
             const retreatCost = card.retreatCost || [];
             const rarityId = card.rarity ? card.rarity.toLowerCase().replace(/\s+/g, '-') : null;
             
+            return [
+                card.id, card.name, card.number, card.set.id, rarityId, card.hp,
+                JSON.stringify(types), JSON.stringify(subtypes), JSON.stringify(rules),
+                JSON.stringify(card.images), JSON.stringify(card.tcgplayer), JSON.stringify(card.cardmarket),
+                JSON.stringify(card.legal), card.artist, card.flavorText, JSON.stringify(nationalPokedexNumbers),
+                JSON.stringify(card.attacks), JSON.stringify(card.weaknesses), JSON.stringify(card.resistances),
+                JSON.stringify(retreatCost), card.convertedRetreatCost
+            ];
+        });
+        
+        // Insertar en batch
+        for (const values of cardValues) {
             await pool.query(`
                 INSERT INTO cards (
                     id, name, number, set_id, rarity_id, hp, types, subtypes,
                     rules, images, tcgplayer, cardmarket, legal, artist,
                     flavor_text, national_pokedex_numbers, attacks, weaknesses,
                     resistances, retreat_cost, converted_retreat_cost
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16::jsonb, $17::jsonb, $18::jsonb, $19::jsonb, $20::jsonb, $21)
                 ON CONFLICT DO NOTHING
-            `, [
-                card.id, card.name, card.number, card.set.id, rarityId, card.hp,
-                types, subtypes, rules, card.images, card.tcgplayer, card.cardmarket,
-                card.legal, card.artist, card.flavorText, nationalPokedexNumbers,
-                card.attacks, card.weaknesses, card.resistances, retreatCost, card.convertedRetreatCost
-            ]);
+            `, values);
             
             cardsMigrated++;
         }
@@ -501,7 +509,7 @@ app.post('/api/pokemontcg/migrate', async function(req, res) {
                 rarities: s.rarities_count,
                 cards: s.cards_count
             },
-            note: 'Solo se migraron las primeras 1000 cartas por tiempo. Ejecutar nuevamente para más.'
+            note: 'Solo se migraron las primeras 100 cartas por tiempo. Ejecutar nuevamente para más.'
         });
         
     } catch (error) {
