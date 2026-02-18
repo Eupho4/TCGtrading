@@ -137,9 +137,15 @@ app.get('/api/pokemontcg/cards', function(req, res) {
         var startIdx = (page - 1) * pageSize;
         var pagedCards = rawCards.slice(startIdx, startIdx + pageSize);
 
-        // Para cada carta necesitamos los detalles completos (obtenemos individualmente)
+        // Para cada carta necesitamos los detalles completos y la info del set
         var cardPromises = pagedCards.map(function(card) {
-            return httpsGet('https://api.tcgdex.net/v2/en/cards/' + card.id).then(function(detailResult) {
+            return Promise.all([
+                httpsGet('https://api.tcgdex.net/v2/en/cards/' + card.id),
+                httpsGet('https://api.tcgdex.net/v2/en/sets/' + card.set.id)
+            ]).then(function(results) {
+                var detailResult = results[0];
+                var setResult = results[1];
+                
                 if (detailResult.status !== 200) {
                     // Fallback a datos basicos si falla el detalle
                     var imageUrl = card.image || '';
@@ -171,7 +177,13 @@ app.get('/api/pokemontcg/cards', function(req, res) {
                 
                 var setId = (detail.set && detail.set.id) || '';
                 var setName = (detail.set && detail.set.name) || '';
-                var seriesName = (detail.set && detail.set.serie && detail.set.serie.name) || '';
+                var seriesName = '';
+                
+                // Obtener serie del set (que sí la tiene)
+                if (setResult.status === 200) {
+                    var setInfo = JSON.parse(setResult.body);
+                    seriesName = (setInfo.serie && setInfo.serie.name) || '';
+                }
                 
                 console.log('Card:', detail.name, 'SetId:', setId, 'Series:', seriesName);
                 
