@@ -2,14 +2,14 @@
   "name": "tcgtrade-app",
   "version": "1.0.0",
   "description": "Aplicación de intercambio de cartas Pokémon",
-  "main": "server-hybrid.js",
+  "main": "server-simple.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node server-hybrid.js",
-    "dev": "node server-hybrid.js",
+    "start": "node server-simple.js",
+    "dev": "node server-simple.js",
     "build": "echo 'Build completed for Railway'",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prod": "NODE_ENV=production node server-hybrid.js"
+    "prod": "NODE_ENV=production node server-simple.js"
   },
   "dependencies": {
     "@tcgdex/sdk": "^2.7.1",
