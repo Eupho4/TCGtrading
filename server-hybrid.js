@@ -297,12 +297,14 @@ app.post('/api/pokemontcg/migrate', async function(req, res) {
         const { Pool } = require('pg');
         const https = require('https');
         
+        // Usar variable personalizada que Railway no controle
+        const customDbUrl = process.env.CUSTOM_DATABASE_URL || process.env.DATABASE_URL;
+        console.log('🔍 CUSTOM_DATABASE_URL:', process.env.CUSTOM_DATABASE_URL ? 'Configurada' : 'No configurada');
         console.log('🔍 DATABASE_URL:', process.env.DATABASE_URL ? 'Configurada' : 'No configurada');
-        console.log('🔍 DATABASE_PUBLIC_URL:', process.env.DATABASE_PUBLIC_URL ? 'Configurada' : 'No configurada');
-        console.log('🔍 URL completa:', process.env.DATABASE_URL);
+        console.log('🔍 URL que se usará:', customDbUrl);
         
         const pool = new Pool({
-            connectionString: process.env.DATABASE_URL,
+            connectionString: customDbUrl,
             ssl: { rejectUnauthorized: false }
         });
         
