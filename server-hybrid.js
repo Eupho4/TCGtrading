@@ -3,6 +3,7 @@ var express = require('express');
 var cors = require('cors');
 var path = require('path');
 var https = require('https');
+const { Pool } = require('pg');
 
 process.on('uncaughtException', function(err) {
     console.error('uncaughtException:', err.message);
@@ -81,7 +82,7 @@ app.get('/', function(req, res) {
 });
 
 app.get('/api/status', function(req, res) {
-    res.json({ status: 'online', timestamp: new Date().toISOString(), searchEngine: 'TCGdex API' });
+    res.json({ status: 'online', timestamp: new Date().toISOString(), searchEngine: 'PostgreSQL Local Database' });
 });
 
 // =============================================
@@ -91,184 +92,202 @@ app.get('/api/pokemontcg/cards', async function(req, res) {
     var searchTerm = req.query.q || '';
     var page = parseInt(req.query.page) || 1;
     var pageSize = parseInt(req.query.pageSize) || 20;
-    console.log('Busqueda:', searchTerm, 'page:', page, 'pageSize:', pageSize);
+    console.log('Busqueda PostgreSQL:', searchTerm, 'page:', page, 'pageSize:', pageSize);
 
     const pool = new Pool({
-        user: process.env.DB_USER,
-        host: process.env.DB_HOST,
-        database: process.env.DB_NAME,
-        password: process.env.DB_PASSWORD,
-        port: process.env.DB_PORT,
+        connectionString: process.env.DATABASE_URL
     });
-    // Esperar a que el cache esté listo
-    if (!setsCache) {
-        return res.status(503).json({ success: false, error: 'Loading sets cache, please retry' });
-    }
 
-    // TCGdex: buscar por nombre
-    var tcgdexUrl = 'https://api.tcgdex.net/v2/en/cards';
-    if (searchTerm && searchTerm.trim()) {
-        // Si es una query tipo set.id:xxx, buscar por set
-        if (searchTerm.indexOf('set.id:') === 0) {
-            var setId = searchTerm.replace('set.id:', '');
-            tcgdexUrl = 'https://api.tcgdex.net/v2/en/sets/' + setId;
-        } else {
-            tcgdexUrl = 'https://api.tcgdex.net/v2/en/cards?name=' + encodeURIComponent(searchTerm);
+    try {
+        // Construir query SQL
+        let query = `
+            SELECT 
+                c.id, c.name, c.number, c.hp, c.types, c.subtypes, c.rules, c.images,
+                c.artist, c.flavor_text, c.national_pokedex_numbers, c.attacks, c.weaknesses,
+                c.resistances, c.retreat_cost, c.converted_retreat_cost, c.tcgplayer, c.cardmarket,
+                c.set_id, s.name as set_name, s.series_id, s.logo as set_logo, s.symbol as set_symbol,
+                se.name as series_name, se.logo as series_logo,
+                r.name as rarity_name
+            FROM cards c
+            LEFT JOIN sets s ON c.set_id = s.id
+            LEFT JOIN series se ON s.series_id = se.id
+            LEFT JOIN rarities r ON c.rarity_id = r.id
+        `;
+        
+        let countQuery = `
+            SELECT COUNT(*) as total FROM cards c
+            LEFT JOIN sets s ON c.set_id = s.id
+            LEFT JOIN series se ON s.series_id = se.id
+        `;
+        const params = [];
+        let whereClause = '';
+        
+        // Búsqueda por nombre, tipo o set
+        if (searchTerm && searchTerm.trim()) {
+            whereClause += ' WHERE (c.name ILIKE $1 OR s.name ILIKE $1 OR se.name ILIKE $1 OR $1 = ANY(c.types))';
+            params.push(`%${searchTerm}%`);
         }
-    }
-
-    console.log('TCGdex URL:', tcgdexUrl);
-
-    httpsGet(tcgdexUrl).then(function(result) {
-        if (result.status !== 200) {
-            console.error('TCGdex error:', result.status, result.body.substring(0, 200));
-            return res.status(500).json({ success: false, error: 'TCGdex error ' + result.status });
-        }
-
-        var json;
-        try { json = JSON.parse(result.body); } catch(e) {
-            return res.status(500).json({ success: false, error: 'JSON parse error' });
-        }
-
-        // TCGdex devuelve array de cartas o un set con cards
-        var rawCards = [];
-        if (Array.isArray(json)) {
-            rawCards = json;
-        } else if (json.cards) {
-            rawCards = json.cards;
-        }
-
-        var totalCount = rawCards.length;
-
-        // Paginacion manual
-        var startIdx = (page - 1) * pageSize;
-        var pagedCards = rawCards.slice(startIdx, startIdx + pageSize);
-
-        // Obtener sets únicos para no repetir peticiones
-        var uniqueSetIds = [];
-        pagedCards.forEach(function(card) {
-            if (card.set && card.set.id && uniqueSetIds.indexOf(card.set.id) === -1) {
-                uniqueSetIds.push(card.set.id);
-            }
-        });
-        var setPromises = uniqueSetIds.map(function(setId) {
-            return httpsGet('https://api.tcgdex.net/v2/en/sets/' + setId).then(function(result) {
-                if (result.status === 200) {
-                    var setInfo = JSON.parse(result.body);
-                    return {
-                        id: setId,
-                        name: setInfo.name || '',
-                        series: (setInfo.serie && setInfo.serie.name) || ''
-                    };
-                }
-                return { id: setId, name: '', series: '' };
-            }).catch(function() {
-                return { id: setId, name: '', series: '' };
-            });
-        });
-
-        // Esperar a que todos los sets se carguen
-        return Promise.all(setPromises).then(function(setsInfo) {
-            var setsMap = {};
-            setsInfo.forEach(function(set) {
-                setsMap[set.id] = set;
-            });
-
-            // Simplificar: devolver datos básicos de carta con set name (sin series por ahora)
-            var cards = pagedCards.map(function(card) {
-                var imageUrl = card.image || '';
-                if (imageUrl && imageUrl.indexOf('/high') === -1) {
-                    imageUrl = imageUrl + '/high.webp';
-                }
-                
-                return {
-                    id: card.id || '',
-                    name: card.name || '',
-                    number: card.localId || '',
-                    rarity: 'Unknown',
-                    types: [],
-                    subtypes: [],
-                    images: {
-                        small: imageUrl.replace('/high.webp', '/low.webp'),
-                        large: imageUrl
-                    },
-                    tcgplayer: {},
-                    cardmarket: {},
-                    set: {
-                        id: (card.set && card.set.id) || '',
-                        name: (card.set && card.set.name) || '',
-                        series: '' // Temporalmente vacío hasta arreglar
-                    }
-                };
-            });
-
-            console.log('Encontradas', cards.length, 'de', totalCount, 'total');
-            res.json({
-                success: true,
-                data: cards,
-                totalCount: totalCount,
+        
+        query += whereClause;
+        countQuery += whereClause;
+        
+        // Paginación
+        const offset = (page - 1) * pageSize;
+        query += ` ORDER BY c.name LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        params.push(pageSize, offset);
+        
+        console.log('Query SQL:', query);
+        console.log('Params:', params);
+        
+        // Ejecutar queries
+        const [cardsResult, countResult] = await Promise.all([
+            pool.query(query, params),
+            pool.query(countQuery, params.slice(0, -2))
+        ]);
+        
+        const totalCards = parseInt(countResult.rows[0].total);
+        const cards = cardsResult.rows;
+        
+        // Formatear resultados como espera el frontend
+        const formattedCards = cards.map(card => ({
+            id: card.id,
+            name: card.name,
+            number: card.number,
+            hp: card.hp,
+            types: card.types,
+            subtypes: card.subtypes,
+            rules: card.rules,
+            images: card.images,
+            artist: card.artist,
+            flavorText: card.flavor_text,
+            nationalPokedexNumbers: card.national_pokedex_numbers,
+            attacks: card.attacks,
+            weaknesses: card.weaknesses,
+            resistances: card.resistances,
+            retreatCost: card.retreat_cost,
+            convertedRetreatCost: card.converted_retreat_cost,
+            tcgplayer: card.tcgplayer,
+            cardmarket: card.cardmarket,
+            set: {
+                id: card.set_id,
+                name: card.set_name,
+                series: card.series_name,
+                logo: card.set_logo,
+                symbol: card.set_symbol
+            },
+            rarity: card.rarity_name
+        }));
+        
+        console.log(`Encontrados ${formattedCards.length} cartas de ${totalCards} totales`);
+        
+        res.json({
+            success: true,
+            data: formattedCards,
+            pagination: {
                 page: page,
                 pageSize: pageSize,
-                totalPages: Math.ceil(totalCount / pageSize)
-            });
+                total: totalCards,
+                totalPages: Math.ceil(totalCards / pageSize)
+            }
         });
-
-    }).catch(function(err) {
-        console.error('Error busqueda:', err.message);
-        res.status(500).json({ success: false, error: err.message });
-    });
+        
+    } catch (error) {
+        console.error('Error en búsqueda PostgreSQL:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    } finally {
+        await pool.end();
+    }
 });
 
 // =============================================
-// SETS via TCGdex
+// SETS via PostgreSQL
 // =============================================
-app.get('/api/pokemontcg/sets', function(req, res) {
-    httpsGet('https://api.tcgdex.net/v2/en/sets').then(function(result) {
-        var json = JSON.parse(result.body);
-        var sets = (Array.isArray(json) ? json : []).map(function(s) {
-            return {
-                id: s.id || '',
-                name: s.name || '',
-                series: s.serie ? s.serie.name || '' : '',
-                cardCount: (s.cardCount && s.cardCount.total) || 0,
-                releaseDate: '',
-                logo: s.logo || ''
-            };
-        });
+app.get('/api/pokemontcg/sets', async function(req, res) {
+    const pool = new Pool({
+        connectionString: process.env.DATABASE_URL
+    });
+
+    try {
+        const result = await pool.query(`
+            SELECT 
+                s.id, s.name, s.printed_total, s.total, s.release_date, s.logo, s.symbol,
+                se.name as series_name
+            FROM sets s
+            LEFT JOIN series se ON s.series_id = se.id
+            ORDER BY s.release_date DESC
+        `);
+
+        const sets = result.rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            series: row.series_name || '',
+            printedTotal: row.printed_total,
+            total: row.total,
+            releaseDate: row.release_date,
+            logo: row.logo,
+            symbol: row.symbol
+        }));
+
         res.json({ success: true, data: sets, count: sets.length });
-    }).catch(function(err) {
-        res.status(500).json({ success: false, error: err.message });
-    });
+    } catch (error) {
+        console.error('Error en sets PostgreSQL:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        await pool.end();
+    }
 });
 
 // =============================================
-// TYPES via TCGdex
+// TYPES via PostgreSQL
 // =============================================
-app.get('/api/pokemontcg/types', function(req, res) {
-    httpsGet('https://api.tcgdex.net/v2/en/types').then(function(result) {
-        var json = JSON.parse(result.body);
-        var types = (Array.isArray(json) ? json : []).map(function(t) {
-            return { id: (typeof t === 'string' ? t.toLowerCase() : t), name: (typeof t === 'string' ? t : t.name || '') };
-        });
+app.get('/api/pokemontcg/types', async function(req, res) {
+    const pool = new Pool({
+        connectionString: process.env.DATABASE_URL
+    });
+
+    try {
+        const result = await pool.query('SELECT id, name FROM types ORDER BY name');
+        
+        const types = result.rows.map(row => ({
+            id: row.id,
+            name: row.name
+        }));
+
         res.json({ success: true, data: types, count: types.length });
-    }).catch(function(err) {
-        res.status(500).json({ success: false, error: err.message });
-    });
+    } catch (error) {
+        console.error('Error en types PostgreSQL:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        await pool.end();
+    }
 });
 
 // =============================================
-// RARITIES via TCGdex
+// RARITIES via PostgreSQL
 // =============================================
-app.get('/api/pokemontcg/rarities', function(req, res) {
-    httpsGet('https://api.tcgdex.net/v2/en/rarities').then(function(result) {
-        var json = JSON.parse(result.body);
-        var rarities = (Array.isArray(json) ? json : []).map(function(r) {
-            return { id: (typeof r === 'string' ? r.toLowerCase().replace(/\s+/g, '-') : r), name: (typeof r === 'string' ? r : r.name || '') };
-        });
-        res.json({ success: true, data: rarities, count: rarities.length });
-    }).catch(function(err) {
-        res.status(500).json({ success: false, error: err.message });
+app.get('/api/pokemontcg/rarities', async function(req, res) {
+    const pool = new Pool({
+        connectionString: process.env.DATABASE_URL
     });
+
+    try {
+        const result = await pool.query('SELECT id, name FROM rarities ORDER BY name');
+        
+        const rarities = result.rows.map(row => ({
+            id: row.id,
+            name: row.name
+        }));
+
+        res.json({ success: true, data: rarities, count: rarities.length });
+    } catch (error) {
+        console.error('Error en rarities PostgreSQL:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        await pool.end();
+    }
 });
 
 // SUBTYPES

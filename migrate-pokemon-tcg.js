@@ -4,8 +4,7 @@ const https = require('https');
 
 // Configuración de PostgreSQL
 const pool = new Pool({
-    connectionString: process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    connectionString: process.env.DATABASE_URL
 });
 
 // Configuración de Pokémon TCG API
@@ -158,15 +157,28 @@ async function createTables() {
     }
 }
 
-// Migrar series
+// Migrar series (desde sets)
 async function migrateSeries() {
     console.log('📚 Migrando series...');
     
     try {
-        const seriesData = await pokemonApiGet('/series');
-        console.log(`📊 Encontradas ${seriesData.data.length} series`);
+        const setsData = await pokemonApiGet('/sets');
+        console.log(`📊 Encontrados ${setsData.data.length} sets`);
         
-        for (const series of seriesData.data) {
+        // Extraer series únicas de los sets
+        const uniqueSeries = new Map();
+        for (const set of setsData.data) {
+            if (set.series && !uniqueSeries.has(set.series.id)) {
+                uniqueSeries.set(set.series.id, {
+                    id: set.series.id,
+                    name: set.series.name,
+                    logo: set.series.logo || ''
+                });
+            }
+        }
+        
+        // Insertar series
+        for (const [id, series] of uniqueSeries) {
             await pool.query(`
                 INSERT INTO series (id, name, logo) 
                 VALUES ($1, $2, $3)
@@ -176,7 +188,9 @@ async function migrateSeries() {
             `, [series.id, series.name, series.logo]);
         }
         
-        console.log('✅ Series migradas');
+        console.log(`✅ ${uniqueSeries.size} series migradas`);
+        return uniqueSeries.size;
+        
     } catch (error) {
         console.error('❌ Error migrando series:', error.message);
         throw error;

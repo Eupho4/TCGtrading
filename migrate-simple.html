@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Migración Simple - Pokémon TCG</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        button:hover {
+            background: #218838;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Migración Simple Pokémon TCG</h1>
+        
+        <div class="warning">
+            <strong>⚠️ Solución temporal:</strong>
+            <p>Como Railway tiene problemas con PostgreSQL, vamos a:</p>
+            <ol>
+                <li>Descargar datos de Pokémon TCG API</li>
+                <li>Guardarlos en archivo JSON</li>
+                <li>Subir archivo a GitHub</li>
+                <li>Luego importar desde tu PC local</li>
+            </ol>
+        </div>
+        
+        <button id="downloadBtn" onclick="downloadData()">
+            📥 Descargar Datos Pokémon TCG
+        </button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://tcgtrade-production.up.railway.app';
+        
+        function updateResult(message, type = 'info') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = type;
+            resultDiv.textContent = message;
+        }
+        
+        function disableButtons(disabled) {
+            document.getElementById('downloadBtn').disabled = disabled;
+        }
+        
+        async function downloadData() {
+            updateResult('📥 Descargando datos de Pokémon TCG API...\nEsto puede tardar varios minutos.', 'info');
+            disableButtons(true);
+            
+            try {
+                // Descargar series
+                updateResult('📚 Descargando series...', 'info');
+                const seriesResponse = await fetch('https://api.pokemontcg.io/v2/series');
+                const seriesData = await seriesResponse.json();
+                
+                // Descargar sets
+                updateResult('📦 Descargando sets...', 'info');
+                let allSets = [];
+                let page = 1;
+                let pageSize = 250;
+                let hasMore = true;
+                
+                while (hasMore) {
+                    const setsResponse = await fetch(`https://api.pokemontcg.io/v2/sets?page=${page}&pageSize=${pageSize}`);
+                    const setsPage = await setsResponse.json();
+                    allSets = allSets.concat(setsPage.data);
+                    hasMore = setsPage.data.length === pageSize;
+                    page++;
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                // Descargar primeras 1000 cartas
+                updateResult('🃏 Descargando primeras 1000 cartas...', 'info');
+                const cardsResponse = await fetch('https://api.pokemontcg.io/v2/cards?pageSize=1000');
+                const cardsData = await cardsResponse.json();
+                
+                // Descargar tipos y rarezas
+                updateResult('🏷️ Descargando tipos y rarezas...', 'info');
+                const [typesResponse, raritiesResponse] = await Promise.all([
+                    fetch('https://api.pokemontcg.io/v2/types'),
+                    fetch('https://api.pokemontcg.io/v2/rarities')
+                ]);
+                
+                const typesData = await typesResponse.json();
+                const raritiesData = await raritiesResponse.json();
+                
+                // Crear archivo JSON completo
+                const migrationData = {
+                    timestamp: new Date().toISOString(),
+                    stats: {
+                        series: seriesData.data.length,
+                        sets: allSets.length,
+                        types: typesData.data.length,
+                        rarities: raritiesData.data.length,
+                        cards: cardsData.data.length
+                    },
+                    data: {
+                        series: seriesData.data,
+                        sets: allSets,
+                        types: typesData.data,
+                        rarities: raritiesData.data,
+                        cards: cardsData.data
+                    }
+                };
+                
+                // Descargar archivo JSON
+                const blob = new Blob([JSON.stringify(migrationData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `pokemon-tcg-migration-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                updateResult(`✅ Datos descargados con éxito!\n\nEstadísticas:\n- Series: ${migrationData.stats.series}\n- Sets: ${migrationData.stats.sets}\n- Tipos: ${migrationData.stats.types}\n- Rarezas: ${migrationData.stats.rarities}\n- Cartas: ${migrationData.stats.cards}\n\n📁 Archivo guardado como: pokemon-tcg-migration-${new Date().toISOString().split('T')[0]}.json\n\n📝 Siguientes pasos:\n1. Sube este archivo a tu proyecto\n2. Ejecuta el script de importación local`, 'success');
+                
+            } catch (error) {
+                updateResult(`❌ Error descargando datos:\n${error.message}\n\nEsto puede ser por:\n- Límites de la API\n- Problemas de red\n- Error del servidor\n\nInténtalo nuevamente en unos minutos.`, 'error');
+            } finally {
+                disableButtons(false);
+            }
+        }
+    </script>
+</body>
+</html>
