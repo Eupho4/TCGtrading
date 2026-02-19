@@ -12,13 +12,29 @@ process.on('unhandledRejection', function(reason) {
     console.error('unhandledRejection:', reason);
 });
 
-// Helper: GET request a cualquier URL HTTPS y devolver body como string
-function httpsGet(url) {
+// Helper: GET request a cualquier URL HTTPS con headers personalizados
+function httpsGetWithHeaders(url, headers = {}) {
     return new Promise(function(resolve, reject) {
-        https.get(url, function(res) {
-            var body = '';
-            res.on('data', function(c) { body += c; });
-            res.on('end', function() { resolve({ status: res.statusCode, body: body }); });
+        const options = {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                'Accept-Language': 'en,en-US;q=0.9',
+                'Referer': 'https://tcgdex.net/',
+                ...headers
+            }
+        };
+        
+        https.get(url, options, function(res) {
+            var body = [];
+            res.on('data', function(c) { body.push(c); });
+            res.on('end', function() { 
+                resolve({ 
+                    status: res.statusCode, 
+                    body: Buffer.concat(body).toString('binary'),
+                    headers: res.headers
+                }); 
+            });
         }).on('error', function(e) { reject(e); });
     });
 }
@@ -29,8 +45,8 @@ var seriesCache = null;
 
 function loadSetsAndSeries() {
     return Promise.all([
-        httpsGet('https://api.tcgdex.net/v2/en/sets'),
-        httpsGet('https://api.tcgdex.net/v2/en/series')
+        httpsGetWithHeaders('https://api.tcgdex.net/v2/en/sets'),
+        httpsGetWithHeaders('https://api.tcgdex.net/v2/en/series')
     ]).then(function(results) {
         var setsData = JSON.parse(results[0].body);
         var seriesData = JSON.parse(results[1].body);
@@ -70,7 +86,7 @@ app.use(express.json());
 app.use(express.static('html'));
 app.use('/js', express.static('js'));
 app.use('/css', express.static('css'));
-app.use('/images', express.static('images'));
+app.use('/images', express.static('images')); // Servir imágenes locales
 app.use('/exports', express.static('exported_data'));
 
 app.get('/api/health', function(req, res) {
@@ -237,6 +253,44 @@ app.get('/api/pokemontcg/sets', async function(req, res) {
         res.status(500).json({ success: false, error: error.message });
     } finally {
         await pool.end();
+    }
+});
+
+// =============================================
+// PROXY PARA IMÁGENES TCGdex
+// =============================================
+app.get('/api/tcgdex-image/*', async function(req, res) {
+    const imagePath = req.params[0]; // Obtener toda la ruta después de /api/tcgdex-image/
+    const imageUrl = `https://assets.tcgdex.net/${imagePath}`;
+    
+    console.log('Proxy de imagen solicitada:', imageUrl);
+    
+    try {
+        // Hacer la petición a la imagen con headers de navegador
+        const imageRes = await httpsGetWithHeaders(imageUrl);
+        
+        if (imageRes.status === 200) {
+            // Verificar si es HTML (mensaje de error) o una imagen real
+            const contentType = imageRes.headers['content-type'] || '';
+            
+            if (contentType.startsWith('image/')) {
+                // Es una imagen real, enviarla
+                res.set('Content-Type', contentType);
+                res.set('Cache-Control', 'public, max-age=86400'); // Cache por 1 día
+                res.send(Buffer.from(imageRes.body, 'binary'));
+            } else {
+                // No es una imagen, mostrar el contenido para debug
+                console.log('La respuesta no es una imagen. Content-Type:', contentType);
+                console.log('Primeros 200 chars:', imageRes.body.substring(0, 200));
+                res.redirect('https://placehold.co/400x550/3b82f6/ffffff?text=Imagen+No+Disponible');
+            }
+        } else {
+            console.log('Error obteniendo imagen:', imageRes.status);
+            res.redirect('https://placehold.co/400x550/3b82f6/ffffff?text=Error+Cargando');
+        }
+    } catch (error) {
+        console.error('Error en proxy de imagen:', error);
+        res.redirect('https://placehold.co/400x550/3b82f6/ffffff?text=Error+Proxy');
     }
 });
 
