@@ -9,73 +9,78 @@
 
 ## Contexto General
 - **Proyecto**: TCGtrading - Plataforma de trading de cartas TCG
-- **Ubicación**: `C:\Users\PC\CascadeProjects\TCGtrading\`
-- **Base de datos**: PostgreSQL (conexión via DATABASE_URL)
+- **Ubicación PC trabajo**: `C:\Users\PC1\Desktop\TCGtrading\`
+- **Base de datos LOCAL**: PostgreSQL (`postgresql://postgres:Badalona.17@localhost:5432/Pokemon%20TCG`)
+- **Base de datos RAILWAY**: `postgresql://postgres:yyHavXPjvNKFLHjltnZjkUUvtDaPjKFf@nozomi.proxy.rlwy.net:50668/railway`
+- **Web en producción**: https://tcgtrade-production.up.railway.app
+- **GitHub**: https://github.com/Eupho4/TCGtrading.git (rama `main`)
 - **API externa**: TCGdex API (https://api.tcgdex.net/v2)
 
-## Scripts de Migración Existentes
+## Estado Actual (03/03/2026) — DEPLOYMENT EN RAILWAY FUNCIONANDO
 
-### 1. `migrate-tcgdex-fixed.js`
-- **Propósito**: Migración completa de cartas desde TCGdex
-- **Estado**: Script completo y funcional
-- **Características**:
-  - Obtiene lista completa de cartas desde API TCGdex
-  - Procesa cada carta individualmente para obtener datos completos
-  - Mapea campos al formato de la base de datos local
-  - Maneja sets, rarezas, ataques, debilidades, etc.
-  - Procesa en lotes de 50 cartas para no sobrecargar API
-  - Incluye verificación final y pruebas de búsqueda
+### ✅ Lo que funciona:
+- **22,721 cartas** migradas a Railway PostgreSQL
+- **21 series, 200 sets, 11 tipos, 4 rarezas** en Railway
+- **Búsqueda de cartas** funciona en la web
+- **Paginación** funciona correctamente al cambiar de página
+- **Imágenes** se ven correctamente (WebP alta calidad desde TCGdex)
+- **Frontend** desplegado y funcionando en Railway
+- **server-hybrid.js** configurado para Railway (sin JOINs a tablas que no existían)
 
-### 2. `fix-tcgdex-migration.js`
-- **Propósito**: Corregir y actualizar sets/series en la BD
-- **Estado**: Script para mantenimiento/corrección
-- **Características**:
-  - Sincroniza sets desde TCGdex
-  - Actualiza series
-  - Corrige relaciones entre cartas y sets
-  - Incluye verificación de JOINs
+### 🔧 TAREA PENDIENTE — Arreglar imágenes rotas en sets con punto:
+- **Problema**: Sets con punto en el ID (ej: `sm3.5`, `ex5.5`, `sv03.5`, `sv04.5`, `sv06.5`, `me02.5`, `sv10.5b`, `sv10.5w`, `sm7.5`, `swsh3.5`, `swsh10.5`, `swsh12.5`) tienen URLs de imágenes que devuelven 404.
+- **Causa**: Las URLs de TCGdex usan el set ID sin punto en la ruta. Ej: `sm3.5` → la URL correcta es `.../sm35/...` no `.../sm3.5/...`
+- **Ejemplo**: `Shining Rayquaza` (sm3.5-56)
+  - ❌ URL actual: `https://assets.tcgdex.net/en/sm/sm3.5/56/high.webp` → 404
+  - ✅ URL correcta: `https://assets.tcgdex.net/en/sm/sm35/56/high.webp` → 200
+- **Script creado**: `fix-dot-urls.js` — listo para ejecutar, no se ha ejecutado todavía
+- **Acción**: Ejecutar `node fix-dot-urls.js` para arreglar todas las URLs de sets con punto
 
-### 3. Otros scripts relacionados
-- `migrate-tcgdex.js` - Versión original
-- `migrate-pokemon-tcg.js` - Migración Pokemon TCG
-- `debug-tcgdex-structure.js` - Debug de estructura
-- `test-tcgdex.js` - Pruebas
+## Estructura de Base de Datos (Railway)
+- `cards` — 22,721 registros. Columnas: id, name, number, set_id, rarity_id, hp, types, subtypes, rules, images (JSONB), tcgplayer, cardmarket, legal, artist, flavor_text, national_pokedex_numbers, attacks, weaknesses, resistances, retreat_cost, converted_retreat_cost
+- `sets` — 200 registros. Columnas: id, name, serie_id, logo, symbol
+- `series` — 21 registros. Columnas: id, name
+- `types` — 11 registros. Columnas: id, name
+- `rarities` — 4 registros. Columnas: id, name
 
-## Estado Actual (19/02/2026)
-- **Última conversación**: Usuario aclaró que necesita TODAS las cartas de TCGdex
-- **Total real de cartas**: 22,755 (no solo 6,199)
-- **Requisito claro**: Migración COMPLETA de TODAS las cartas con TODAS las imágenes
-- **Script creado**: `migrate-all-tcgdex-complete.js`
-- **Plan actualizado**: 
-  1. Limpiar BD completamente
-  2. Obtener TODAS las 22,755 cartas de TCGdex API
-  3. Descargar TODAS las imágenes localmente
-  4. Migrar información completa a BD
-  5. Servir imágenes desde servidor local
+## Scripts Importantes
 
-## Estructura de Base de Datos
-- `cards` - Tabla principal de cartas
-- `sets` - Sets/Expansiones
-- `series` - Series de sets
-- Relaciones: cards → sets → series
+### Migración y datos:
+- `migrate-local.js` — Migrar JSON backup a PostgreSQL local
+- `migrate-to-railway.js` — Migrar JSON backup a Railway PostgreSQL
+- `fix-railway-tables.js` — Crear y poblar tablas sets/series/types/rarities en Railway desde TCGdex API
+- `restore-images-from-tcgdex.js` — Restaurar URLs de imágenes desde TCGdex API (ya ejecutado, 22,755 cartas)
+- `fix-dot-urls.js` — **PENDIENTE** Arreglar URLs de sets con punto en el ID
+- `import-json-to-db.js` — Script original de importación
+- `check-missing-images.js` — Verificar cartas sin imágenes
+- `check-card.js` — Verificar una carta específica en BD
+
+### Servidor:
+- `server-hybrid.js` — Servidor principal (Express + PostgreSQL). Usa `DATABASE_URL` del entorno. En Railway tiene SSL habilitado. Formatea cartas con info de sets desde cache.
+
+### Backup:
+- `tcg_complete_backup_2026-02-19T14-19-35-633Z.json` — Backup completo de 22,721 cartas (NOTA: las imágenes en este JSON están vacías `{}`, se restauraron desde TCGdex API)
+
+## Archivos Clave Modificados (03/03/2026)
+- `server-hybrid.js` — Añadido código para arreglar URLs de imágenes TCGdex (añade `/high.webp`). Queries sin JOINs a sets/series para Railway.
+- `js/app-ui.js` — Eliminado bloqueo de URLs TCGdex que forzaba placeholder "En Proceso". Arreglado bug de paginación (`data.pagination?.total || data.totalCount`).
+
+## Configuración Railway
+- **DATABASE_URL**: configurada como variable de entorno en Railway
+- **Deploy**: automático desde GitHub (push a `main` = redeploy en 2-3 min)
+- **Node.js**: v24.14.0
+- **SSL**: habilitado para conexión a PostgreSQL
 
 ## Próximos Pasos
-1. ✅ Servidor corriendo en localhost:3001 
-2. ✅ API local respondiendo correctamente
-3. ✅ Frontend corregido para usar pagination.total
-4. ✅ Script de migración COMPLETA creado (`migrate-all-tcgdex-complete.js`)
-5. ✅ Servidor configurado para servir imágenes locales
-6. ✅ Frontend actualizado para usar URLs locales
-7. 🔄 **EJECUTANDO**: Migración COMPLETA de 22,755 cartas con imágenes
-8. ⏳ Esperar finalización (varias horas)
-9. 📝 Verificación final
-
-## Notas Importantes
-- Los scripts ya están probados y funcionales
-- Manejan errores y timeouts de API
-- Incluyen logging detallado del progreso
-- Usan procesamiento por lotes para evitar sobrecarga
+1. ✅ Migrar 22,721 cartas a Railway
+2. ✅ Crear tablas sets/series/types/rarities en Railway
+3. ✅ Arreglar paginación frontend
+4. ✅ Restaurar imágenes desde TCGdex (22,755 cartas)
+5. ✅ Eliminar bloqueo placeholder TCGdex en frontend
+6. 🔧 **PENDIENTE**: Ejecutar `node fix-dot-urls.js` para arreglar imágenes de sets con punto (sm3.5, ex5.5, etc.)
+7. ⏳ Verificar que todas las imágenes se ven correctamente
+8. ⏳ Hacer push del fix y esperar redeploy en Railway
 
 ---
-*Última actualización: 19/02/2026*
+*Última actualización: 03/03/2026 — Sesión PC trabajo*
 *Contexto guardado para futuras conversaciones*
