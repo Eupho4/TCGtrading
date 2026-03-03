@@ -10521,7 +10521,7 @@ async function goToSearchPage(targetPage) {
             cardsContainer.appendChild(row);
         });
 
-        const totalCount = data.totalCount || 0;
+        const totalCount = data.pagination?.total || data.totalCount || 0;
 
         // Guardar en cache
         searchCache.set(cacheKey, { cards, totalCount });
