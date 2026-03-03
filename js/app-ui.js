@@ -9687,6 +9687,7 @@ window.showBulkAddModal = async () => {
 
     // Crear modal
     const modal = document.createElement('div');
+    modal.id = 'bulkAddModal';
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
     modal.innerHTML = `
                 <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-xl">
@@ -9695,7 +9696,7 @@ window.showBulkAddModal = async () => {
                             ➕ Agregar Cartas por Set
                         </h2>
                         <button class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                                onclick="this.closest('.fixed').remove()">
+                                onclick="document.getElementById('bulkAddModal').remove()">
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                             </svg>
@@ -9758,11 +9759,11 @@ window.showBulkAddModal = async () => {
                     
                     <!-- Botones de acción -->
                     <div class="mt-6 flex justify-end space-x-3">
-                        <button class="btn-secondary px-4 py-2 rounded" onclick="this.closest('.fixed').remove()">
+                        <button class="btn-secondary px-4 py-2 rounded" onclick="document.getElementById('bulkAddModal').remove()">
                             Cancelar
                         </button>
                         <button id="bulkAddBtn" class="btn-primary px-4 py-2 rounded" disabled>
-                            ➕ Agregar Seleccionadas (0)
+                            ➕ Agregar Seleccionadas
                         </button>
                     </div>
                 </div>
@@ -9939,7 +9940,11 @@ async function loadSetCards(setId) {
         if (!response.ok) throw new Error('Error al cargar cartas');
 
         const data = await response.json();
-        const cards = data.data || [];
+        const cards = (data.data || []).sort((a, b) => {
+            const nA = parseInt(a.number) || 0;
+            const nB = parseInt(b.number) || 0;
+            return nA - nB;
+        });
 
         if (cards.length === 0) {
             container.innerHTML = '<div class="text-center py-4">No se encontraron cartas</div>';
@@ -10045,7 +10050,7 @@ function updateSelectedCount() {
 
     const bulkAddBtn = document.getElementById('bulkAddBtn');
     bulkAddBtn.disabled = selected === 0;
-    bulkAddBtn.textContent = `➕ Agregar Seleccionadas (${selected})`;
+    bulkAddBtn.textContent = selected > 0 ? `➕ Agregar Seleccionadas (${selected})` : '➕ Agregar Seleccionadas';
 }
 
 // Agregar cartas seleccionadas
@@ -10087,7 +10092,7 @@ async function addSelectedCards() {
     }
 
     // Cerrar modal
-    document.querySelector('.fixed').remove();
+    document.getElementById('bulkAddModal')?.remove();
 
     // Mostrar resultado
     if (errors.length === 0) {
