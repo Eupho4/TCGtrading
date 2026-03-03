@@ -56,19 +56,19 @@ app.get('/api/pokemontcg/cards', async (req, res) => {
 
         if (set) {
             whereConditions.push(`s.name ILIKE $${paramIndex}`);
-            params.push(`%${set}%`);
+            params.push(set);
             paramIndex++;
         }
 
         if (series) {
             whereConditions.push(`se.name ILIKE $${paramIndex}`);
-            params.push(`%${series}%`);
+            params.push(series);
             paramIndex++;
         }
 
         if (type) {
-            whereConditions.push(`c.types::text ILIKE $${paramIndex}`);
-            params.push(`%"${type}"%`);
+            whereConditions.push(`$${paramIndex} ILIKE ANY(c.types)`);
+            params.push(type);
             paramIndex++;
         }
 
