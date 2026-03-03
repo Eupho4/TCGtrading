@@ -67,9 +67,19 @@ app.get('/api/pokemontcg/cards', async (req, res) => {
         }
 
         if (type) {
-            whereConditions.push(`$${paramIndex} ILIKE ANY(c.types)`);
-            params.push(type);
-            paramIndex++;
+            if (type.toLowerCase() === 'trainer') {
+                whereConditions.push(`(c.hp IS NULL AND NOT (c.name ILIKE $${paramIndex}))`);
+                params.push('%Energy%');
+                paramIndex++;
+            } else if (type.toLowerCase() === 'energy') {
+                whereConditions.push(`(c.hp IS NULL AND c.name ILIKE $${paramIndex})`);
+                params.push('%Energy%');
+                paramIndex++;
+            } else {
+                whereConditions.push(`$${paramIndex} ILIKE ANY(c.types)`);
+                params.push(type);
+                paramIndex++;
+            }
         }
 
         if (rarity) {
