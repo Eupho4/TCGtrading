@@ -9640,27 +9640,24 @@ window.addCardDirectly = async (cardId, cardName, imageUrl, setName, series, num
 window.showCardDetails = window.addCardDirectly;
 
 // Función para añadir carta a la colección
-async function addCardToCollection(cardId, cardName, imageUrl, setName, series, number, condition = 'NM', language = 'Español') {
+async function addCardToCollection(cardId, cardName, imageUrl, setName, series, number, condition = 'NM', language = 'Español', quantity = 1) {
     if (!currentUser) return;
 
     try {
-        // Primero verificar si la carta ya existe
         const cardRef = doc(db, 'users', currentUser.uid, 'my_cards', cardId);
         const cardDoc = await getDoc(cardRef);
 
         if (cardDoc.exists()) {
-            // Si existe, incrementar la cantidad
             const currentData = cardDoc.data();
-            const currentQuantity = currentData.quantity || 1;
+            const newQuantity = (currentData.quantity || 1) + quantity;
             await setDoc(cardRef, {
                 ...currentData,
-                quantity: currentQuantity + 1,
+                quantity: newQuantity,
+                condition: condition,
                 lastUpdated: new Date()
             });
-            showNotification(`¡Carta "${cardName}" añadida! Ahora tienes ${currentQuantity + 1} copias.`, 'success', 4000);
         } else {
-            // Si no existe, crear nueva entrada con cantidad 1
-            const cardData = {
+            await setDoc(cardRef, {
                 id: cardId,
                 name: cardName,
                 imageUrl: imageUrl,
@@ -9669,16 +9666,14 @@ async function addCardToCollection(cardId, cardName, imageUrl, setName, series, 
                 number: number,
                 condition: condition,
                 language: language,
-                setId: cardId.split('-')[0], // Extraer setId del cardId
-                quantity: 1,
+                setId: cardId.split('-')[0],
+                quantity: quantity,
                 addedAt: new Date()
-            };
-            await setDoc(cardRef, cardData);
-            showNotification(`¡Carta "${cardName}" añadida a tu colección!`, 'success', 4000);
+            });
         }
     } catch (error) {
         console.error('Error al añadir carta:', error);
-        showNotification('Error al añadir la carta. Inténtalo de nuevo.', 'error', 5000);
+        throw error;
     }
 }
 
@@ -9936,11 +9931,9 @@ async function loadSetCards(setId) {
     try {
         let response;
         if (source === 'tcgdex') {
-            // Usar API de TCGdex
             response = await fetch(`/api/tcgdex/cards?set=${setId}`);
         } else {
-            // Usar API de Pokemon TCG
-            response = await fetch(`/api/pokemontcg/cards?q=set.id:${setId}&pageSize=250`);
+            response = await fetch(`/api/pokemontcg/cards?setId=${encodeURIComponent(setId)}&pageSize=250`);
         }
 
         if (!response.ok) throw new Error('Error al cargar cartas');
@@ -9957,15 +9950,16 @@ async function loadSetCards(setId) {
         container.innerHTML = `
                     <table class="w-full">
                         <thead>
-                            <tr class="border-b dark:border-gray-600">
-                                <th class="text-left p-2 w-10">
+                            <tr class="border-b dark:border-gray-600 text-xs text-gray-500 dark:text-gray-400">
+                                <th class="text-left p-2 w-8">
                                     <input type="checkbox" id="selectAllCheckbox" class="rounded">
                                 </th>
-                                <th class="text-left p-2">#</th>
-                                <th class="text-left p-2">Imagen</th>
+                                <th class="text-left p-2 w-10">#</th>
+                                <th class="text-left p-2 w-14">Img</th>
                                 <th class="text-left p-2">Nombre</th>
                                 <th class="text-left p-2">Rareza</th>
-                                <th class="text-left p-2 w-20">Cantidad</th>
+                                <th class="text-left p-2 w-20">Cant.</th>
+                                <th class="text-left p-2 w-28">Condición</th>
                             </tr>
                         </thead>
                         <tbody id="cardsTableBody">
@@ -9992,11 +9986,20 @@ async function loadSetCards(setId) {
                                         </div>
                                     </td>
                                     <td class="p-2 font-medium">${card.displayName || card.name}</td>
-                                    <td class="p-2 text-sm">${card.rarity || 'Common'}</td>
+                                    <td class="p-2 text-xs text-gray-500">${card.rarity || 'Common'}</td>
                                     <td class="p-2">
-                                        <input type="number" min="1" max="99" value="1" 
-                                               class="card-quantity w-16 px-2 py-1 border rounded dark:bg-gray-700 dark:border-gray-600"
+                                        <input type="number" min="1" max="99" value="1"
+                                               class="card-quantity w-14 px-1 py-1 border rounded text-sm dark:bg-gray-700 dark:border-gray-600"
                                                data-card-id="${card.id}">
+                                    </td>
+                                    <td class="p-2">
+                                        <select class="card-condition w-24 px-1 py-1 border rounded text-sm dark:bg-gray-700 dark:border-gray-600"
+                                                data-card-id="${card.id}">
+                                            <option value="NM">NM</option>
+                                            <option value="EX">EX</option>
+                                            <option value="GD">GD</option>
+                                            <option value="PO">PO</option>
+                                        </select>
                                     </td>
                                 </tr>
                             `).join('')}
@@ -10060,23 +10063,23 @@ async function addSelectedCards() {
     for (const checkbox of selected) {
         const cardId = checkbox.dataset.cardId;
         const quantityInput = document.querySelector(`.card-quantity[data-card-id="${cardId}"]`);
-        const quantity = parseInt(quantityInput.value) || 1;
+        const conditionInput = document.querySelector(`.card-condition[data-card-id="${cardId}"]`);
+        const quantity = parseInt(quantityInput?.value) || 1;
+        const condition = conditionInput?.value || 'NM';
 
         try {
-            // Agregar cada carta con la cantidad especificada
-            for (let i = 0; i < quantity; i++) {
-                await addCardToCollection(
-                    cardId,
-                    checkbox.dataset.cardName,
-                    checkbox.dataset.cardImage,
-                    checkbox.dataset.cardSet,
-                    checkbox.dataset.cardSeries,
-                    checkbox.dataset.cardNumber,
-                    'NM', // Condición por defecto
-                    'Español' // Idioma por defecto
-                );
-                addedCount++;
-            }
+            await addCardToCollection(
+                cardId,
+                checkbox.dataset.cardName,
+                checkbox.dataset.cardImage,
+                checkbox.dataset.cardSet,
+                checkbox.dataset.cardSeries,
+                checkbox.dataset.cardNumber,
+                condition,
+                'Español',
+                quantity
+            );
+            addedCount += quantity;
         } catch (error) {
             console.error(`Error al agregar ${checkbox.dataset.cardName}:`, error);
             errors.push(checkbox.dataset.cardName);

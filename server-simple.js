@@ -36,6 +36,7 @@ app.get('/api/pokemontcg/cards', async (req, res) => {
             page = 1,
             pageSize = 20,
             set,
+            setId,
             series,
             type,
             rarity
@@ -54,7 +55,11 @@ app.get('/api/pokemontcg/cards', async (req, res) => {
             paramIndex++;
         }
 
-        if (set) {
+        if (setId) {
+            whereConditions.push(`s.id = $${paramIndex}`);
+            params.push(setId);
+            paramIndex++;
+        } else if (set) {
             whereConditions.push(`s.name ILIKE $${paramIndex}`);
             params.push(set);
             paramIndex++;
