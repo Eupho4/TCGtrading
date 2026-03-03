@@ -6046,7 +6046,7 @@ async function fetchCards(query) {
         const cards = data.data || [];
 
         console.log('✅ API Response received:', {
-            totalCount: data.totalCount,
+            totalCount: data.pagination?.total || data.totalCount || 0,
             cardsReturned: cards.length,
             localResults: data.localResults || 0,
             apiResults: data.apiResults || 0,
@@ -6054,7 +6054,7 @@ async function fetchCards(query) {
         });
 
         // Render paginación
-        const totalCount = data.totalCount || 0;
+        const totalCount = data.pagination?.total || data.totalCount || 0;
         renderPagination(totalCount, searchPage, searchPageSize);
 
         if (cards.length > 0) {
@@ -10572,11 +10572,34 @@ function renderCardsFromData(cards) {
         imgContainer.className = 'hidden absolute left-14 top-1/2 -translate-y-1/2 z-30';
         imgContainer.style.pointerEvents = 'none';
 
+        // Función para obtener URL de imagen válida
+        function getValidImageUrl(images) {
+            if (!images) return 'https://placehold.co/400x550/a0aec0/ffffff?text=Sin+imagen';
+            
+            const imageUrl = images.large || images.small;
+            if (!imageUrl) return 'https://placehold.co/400x550/a0aec0/ffffff?text=Sin+imagen';
+            
+            // Si ya es una URL local, usarla directamente
+            if (imageUrl.startsWith('/images/')) {
+                return imageUrl;
+            }
+            
+            // Si es una URL de TCGdex, usar placeholder por ahora (se reemplazará con la migración)
+            if (imageUrl.includes('assets.tcgdex.net')) {
+                return 'https://placehold.co/400x550/f59e0b/ffffff?text=En+Proceso';
+            }
+            
+            return imageUrl;
+        }
+
         const imgEl = document.createElement('img');
-        imgEl.src = (card.images?.large || card.images?.small) || 'https://placehold.co/400x550/a0aec0/ffffff?text=Sin+imagen';
+        imgEl.src = getValidImageUrl(card.images);
         imgEl.alt = card.name || 'Carta';
         imgEl.className = 'w-64 h-auto object-contain rounded-lg shadow-2xl border-2 border-gray-200';
-        imgEl.onerror = () => { imgEl.src = 'https://placehold.co/400x550/a0aec0/ffffff?text=Error'; };
+        imgEl.onerror = () => { 
+            console.log('❌ Error cargando imagen:', imgEl.src, 'para carta:', card.name);
+            imgEl.src = 'https://placehold.co/400x550/3b82f6/ffffff?text=Carta+No+Disponible'; 
+        };
 
         imgContainer.appendChild(imgEl);
         row.appendChild(imgContainer);

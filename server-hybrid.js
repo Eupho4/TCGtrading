@@ -256,6 +256,44 @@ app.get('/api/tcgdex-image/*', async function(req, res) {
 });
 
 // =============================================
+// PROXY PARA IMÁGENES TCGdex
+// =============================================
+app.get('/api/tcgdex-image/*', async function(req, res) {
+    const imagePath = req.params[0]; // Obtener toda la ruta después de /api/tcgdex-image/
+    const imageUrl = `https://assets.tcgdex.net/${imagePath}`;
+    
+    console.log('Proxy de imagen solicitada:', imageUrl);
+    
+    try {
+        // Hacer la petición a la imagen con headers de navegador
+        const imageRes = await httpsGetWithHeaders(imageUrl);
+        
+        if (imageRes.status === 200) {
+            // Verificar si es HTML (mensaje de error) o una imagen real
+            const contentType = imageRes.headers['content-type'] || '';
+            
+            if (contentType.startsWith('image/')) {
+                // Es una imagen real, enviarla
+                res.set('Content-Type', contentType);
+                res.set('Cache-Control', 'public, max-age=86400'); // Cache por 1 día
+                res.send(Buffer.from(imageRes.body, 'binary'));
+            } else {
+                // No es una imagen, mostrar el contenido para debug
+                console.log('La respuesta no es una imagen. Content-Type:', contentType);
+                console.log('Primeros 200 chars:', imageRes.body.substring(0, 200));
+                res.redirect('https://placehold.co/400x550/3b82f6/ffffff?text=Imagen+No+Disponible');
+            }
+        } else {
+            console.log('Error obteniendo imagen:', imageRes.status);
+            res.redirect('https://placehold.co/400x550/3b82f6/ffffff?text=Error+Cargando');
+        }
+    } catch (error) {
+        console.error('Error en proxy de imagen:', error);
+        res.redirect('https://placehold.co/400x550/3b82f6/ffffff?text=Error+Proxy');
+    }
+});
+
+// =============================================
 // TYPES via PostgreSQL
 // =============================================
 app.get('/api/pokemontcg/types', async function(req, res) {
