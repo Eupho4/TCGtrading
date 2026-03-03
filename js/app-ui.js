@@ -5992,8 +5992,15 @@ async function fetchCards(query) {
         return;
     }
 
-    // Si la query está vacía, usar búsqueda aleatoria
-    const searchQuery = query.length === 0 ? 'pokemon' : query;
+    // Si la query está vacía y no hay filtros activos, no buscar
+    const hasActiveFilters = searchFiltersState.series || searchFiltersState.set ||
+        searchFiltersState.rarity || searchFiltersState.type;
+    if (query.length === 0 && !hasActiveFilters) {
+        hideLoadingSpinner();
+        return;
+    }
+
+    const searchQuery = query;
 
     showLoadingSpinner();
     showSearchResults();
@@ -8755,9 +8762,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (searchFiltersState.series || searchFiltersState.set ||
                 searchFiltersState.rarity || searchFiltersState.type ||
                 searchFiltersState.language) {
-                // Si hay filtros pero no término de búsqueda, usar búsqueda general
+                // Si hay filtros pero no término de búsqueda, buscar solo por filtros
                 console.log('🔍 Aplicando filtros sin término de búsqueda:', searchFiltersState);
-                fetchCards('pokemon');
+                fetchCards('');
             } else {
                 showNotification('Por favor ingresa un término de búsqueda o selecciona filtros', 'warning');
             }
