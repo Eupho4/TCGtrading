@@ -10584,10 +10584,7 @@ function renderCardsFromData(cards) {
                 return imageUrl;
             }
             
-            // Si es una URL de TCGdex, usar placeholder por ahora (se reemplazará con la migración)
-            if (imageUrl.includes('assets.tcgdex.net')) {
-                return 'https://placehold.co/400x550/f59e0b/ffffff?text=En+Proceso';
-            }
+            // URLs de TCGdex son válidas, usarlas directamente
             
             return imageUrl;
         }
