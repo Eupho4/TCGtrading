@@ -158,7 +158,7 @@ app.get('/api/pokemontcg/cards', async function(req, res) {
                 types: card.types,
                 subtypes: card.subtypes,
                 rules: card.rules,
-                images: card.images,
+                images: images,
                 artist: card.artist,
                 flavorText: card.flavor_text,
                 nationalPokedexNumbers: card.national_pokedex_numbers,
