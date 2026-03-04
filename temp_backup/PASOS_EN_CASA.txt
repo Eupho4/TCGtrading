@@ -1,0 +1,254 @@
+🎯 PASOS PARA CONFIGURAR TCGTRADING EN PC DE CASA
+===============================================
+
+📅 FECHA: 19 de febrero de 2026
+📊 ESTADO: Todo listo en Google Drive
+🃏 CARTAS: 22,721 cartas migradas
+
+---
+
+🛠️ PASO 1: INSTALAR POSTGRESQL
+============================
+
+1. Abrir navegador y ir a: https://www.postgresql.org/download/windows/
+2. Descargar PostgreSQL para Windows
+3. Ejecutar instalador:
+   - Usar password: Badalona.17
+   - Puerto: 5432 (default)
+   - Marcar "Install pgAdmin 4" (opcional)
+4. Esperar a que termine la instalación
+
+---
+
+📥 PASO 2: DESCARGAR DESDE GOOGLE DRIVE
+====================================
+
+1. Abrir Google Drive: https://drive.google.com
+2. Buscar carpeta: "TCGtrading"
+3. Descargar la carpeta COMPLETA
+4. Crear carpeta en C:\Projects\TCGtrading
+5. Mover todo el contenido descargado allí
+
+Verificar que tengas:
+✅ tcg_complete_backup_2026-02-19T14-19-35-633Z.json (39.78 MB)
+✅ tcg_backup_2026-02-19T14-19-35-633Z_INSTRUCTIONS.txt
+✅ GUIA_COMPLETA_NUBE_Y_PC_CASA.md
+✅ server-hybrid.js
+✅ .env
+✅ html/ (carpeta)
+✅ js/ (carpeta)
+✅ css/ (carpeta)
+
+---
+
+🗄️ PASO 3: CREAR BASE DE DATOS
+==============================
+
+1. Abrir menú inicio
+2. Buscar "SQL Shell (psql)" y abrirlo
+3. Conectar con estos datos:
+   - Server: localhost
+   - Database: postgres
+   - Port: 5432
+   - Username: postgres
+   - Password: Badalona.17
+
+4. Una vez conectado, ejecutar:
+   CREATE DATABASE pokemon_tcg;
+
+5. Verificar que se creó:
+   \l
+   (deberías ver pokemon_tcg en la lista)
+
+6. Salir: \q
+
+---
+
+📦 PASO 4: RESTAURAR BASE DE DATOS
+================================
+
+MÉTODO A - Usando script de importación:
+
+1. Abrir CMD o PowerShell como administrador
+2. Navegar a la carpeta:
+   cd C:\Projects\TCGtrading
+
+3. Ejecutar script de importación:
+   node import-json-to-db.js
+
+4. Esperar a que termine (puede tardar varios minutos)
+
+MÉTODO B - Manual (si el script no funciona):
+
+1. Abrir CMD en la carpeta del proyecto
+2. Ejecutar este comando (una sola línea):
+
+node -e "
+const fs = require('fs');
+const { Pool } = require('pg');
+const data = JSON.parse(fs.readFileSync('tcg_complete_backup_2026-02-19T14-19-35-633Z.json'));
+const pool = new Pool({connectionString: 'postgresql://postgres:Badalona.17@localhost:5432/pokemon_tcg'});
+pool.query('BEGIN').then(() => {
+  console.log('🔄 Importando', data.cards.length, 'cartas...');
+  const promises = data.cards.map((card, index) => {
+    return pool.query(
+      'INSERT INTO cards (id, name, number, set_id, rarity_id, hp, types, subtypes, rules, images, tcgplayer, cardmarket, legal, artist, flavor_text, national_pokedex_numbers, attacks, weaknesses, resistances, retreat_cost, converted_retreat_cost) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)',
+      [card.id, card.name, card.number, card.set_id, card.rarity_id, card.hp, card.types, card.subtypes, card.rules, card.images, card.tcgplayer, card.cardmarket, card.legal, card.artist, card.flavor_text, card.national_pokedex_numbers, card.attacks, card.weaknesses, card.resistances, card.retreat_cost, card.converted_retreat_cost]
+    ).then(() => {
+      if ((index + 1) % 1000 === 0) {
+        console.log('✅ Importadas', index + 1, 'cartas');
+      }
+    });
+  });
+  return Promise.all(promises);
+}).then(() => pool.query('COMMIT')).then(() => {
+  console.log('✅ ¡Restauración completada!');
+  pool.end();
+}).catch(err => {
+  console.error('❌ Error:', err.message);
+  pool.end();
+});
+"
+
+---
+
+🔧 PASO 5: VERIFICAR BASE DE DATOS
+================================
+
+1. Abrir "SQL Shell (psql)" nuevamente
+2. Conectar a la base de datos pokemon_tcg:
+   - Database: pokemon_tcg
+   - Resto igual
+
+3. Ejecutar estas consultas para verificar:
+
+-- Verificar total de cartas:
+SELECT COUNT(*) as total_cartas FROM cards;
+-- Debería mostrar: 22721
+
+-- Verificar sets:
+SELECT COUNT(DISTINCT set_id) as sets FROM cards;
+-- Debería mostrar: 195
+
+-- Verificar algunas cartas:
+SELECT name, set_id FROM cards LIMIT 5;
+
+4. Si todo es correcto: \q
+
+---
+
+🚀 PASO 6: INICIAR SERVIDOR
+==========================
+
+1. Abrir CMD o PowerShell
+2. Navegar al proyecto:
+   cd C:\Projects\TCGtrading
+
+3. Instalar dependencias (si es necesario):
+   npm install
+
+4. Iniciar servidor:
+   node server-hybrid.js
+
+5. Deberías ver:
+   Sets cargados: 200
+   Series cargadas: 21
+   Servidor corriendo en http://localhost:3000
+
+---
+
+🌐 PASO 7: VERIFICAR WEB
+========================
+
+1. Abrir navegador
+2. Ir a: http://localhost:3000
+3. Buscar: "charizard"
+4. Deberías ver resultados de búsqueda
+5. Probar buscar otras cartas: "pikachu", "bulbasaur"
+
+---
+
+📱 PASO 8: VERIFICACIÓN FINAL
+=============================
+
+✅ CHECKLIST DE VERIFICACIÓN:
+
+□ PostgreSQL instalado y funcionando
+□ Base de datos pokemon_tcg creada
+□ 22,721 cartas importadas
+□ Servidor iniciado sin errores
+□ Búsqueda web funcionando
+□ Puedes ver detalles de cartas
+□ Paginación funciona
+
+---
+
+🚨 SOLUCIÓN DE PROBLEMAS COMUNES
+================================
+
+❌ ERROR: "database does not exist"
+→ Solución: CREATE DATABASE pokemon_tcg;
+
+❌ ERROR: "password authentication failed"
+→ Solución: Verificar password Badalona.17 en .env
+
+❌ ERROR: "relation 'cards' does not exist"
+→ Solución: La importación no se completó, volver a ejecutar paso 4
+
+❌ ERROR: "port already in use"
+→ Solución: 
+   set PORT=3001 && node server-hybrid.js
+   O cerrar otros procesos usando puerto 3000
+
+❌ ERROR: "node is not recognized"
+→ Solución: Instalar Node.js desde https://nodejs.org
+
+❌ ERROR: "Cannot find module"
+→ Solución: npm install
+
+---
+
+📞 SI TODO FALLA - PLAN B
+========================
+
+1. Verificar que el archivo JSON exista:
+   tcg_complete_backup_2026-02-19T14-19-35-633Z.json
+
+2. Verificar tamaño: 39.78 MB
+
+3. Si el archivo está corrupto, contactar para generar nuevo backup
+
+4. Usar la guía GUIA_COMPLETA_NUBE_Y_PC_CASA.md
+
+---
+
+🎉 ¡ÉXITO!
+==========
+
+Si llegas hasta aquí y todo funciona, ¡felicidades!
+Tienes 22,721 cartas de TCGdex funcionando localmente
+sin dependencias de APIs externas.
+
+📊 ESTADÍSTICAS FINALES:
+- Cartas: 22,721
+- Sets: 195
+- Con ataques: 19,171
+- Con debilidades: 13,866
+- Todo funcionando offline
+
+🚀 ¡LISTO PARA USAR!
+
+---
+
+📋 NOTAS FINALES
+===============
+
+- Guarda este archivo para referencia futura
+- El servidor usa el puerto 3000 por defecto
+- Puedes cambiar el puerto modificando server-hybrid.js
+- Las imágenes usan URLs de TCGdex (se pueden resolver después)
+- Todo el proyecto es portable y funciona offline
+
+📞 ¿Necesitas ayuda? Revisa las guías o contacta soporte.
+
+¡Disfruta de tu colección completa de cartas Pokémon! 🃏

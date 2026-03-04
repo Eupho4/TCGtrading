@@ -4,9 +4,23 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuración de PostgreSQL
+const connectionString = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
+
+if (!connectionString) {
+    console.error('❌ DATABASE_URL no está configurada');
+    process.exit(1);
+}
+
+const isLocalConnection = /(^|\/\/)(localhost|127\.0\.0\.1)(:|\/|$)/i.test(connectionString);
+const sslFromEnv = process.env.PG_SSL;
+
+const ssl = sslFromEnv != null
+    ? (sslFromEnv.toLowerCase() === 'true' ? { rejectUnauthorized: false } : false)
+    : (isLocalConnection ? false : { rejectUnauthorized: false });
+
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    connectionString,
+    ssl
 });
 
 async function importJsonToDatabase(jsonFilePath) {
