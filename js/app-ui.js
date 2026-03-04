@@ -3242,6 +3242,12 @@ function loadNotifications() {
                             </div>
                         </div>
                         <div class="flex gap-2">
+                            ${notif.proposalId && notif.tradeId ? `
+                                <button onclick="viewProposalDetails('${notif.proposalId}', '${notif.tradeId}')"
+                                        class="px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white rounded text-sm">
+                                    Ver Propuesta
+                                </button>
+                            ` : ''}
                             ${notif.tradeId ? `
                                 <button onclick="viewTradeDetails('${notif.tradeId}')"
                                         class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm">
@@ -3891,7 +3897,7 @@ window.viewProposalDetails = function (proposalId, tradeId) {
                             ` : ''}
                             
                             <!-- Botones de acción -->
-                            ${proposal.status === 'pending' && originalTrade && originalTrade.createdBy === currentUser.uid ? `
+                            ${proposal.status === 'pending' && originalTrade && originalTrade.userId === currentUser.uid ? `
                                 <div class="flex gap-3 justify-center mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                                     <button onclick="acceptProposal('${proposalId}', '${tradeId}'); this.closest('.fixed').remove();"
                                             class="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold">
@@ -4661,6 +4667,61 @@ function viewTradeDetails(tradeId) {
                                 <p class="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">${trade.description}</p>
                             </div>
                         ` : ''}
+                        
+                        <!-- Propuestas Pendientes (solo visible para el dueño del trade) -->
+                        ${(() => {
+                            const proposalsKey = `proposals_${tradeId}`;
+                            const tradeProposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
+                            const pendingProposals = tradeProposals.filter(p => p.status === 'pending');
+                            if (pendingProposals.length > 0 && currentUser && trade.userId === currentUser.uid) {
+                                return `
+                                <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-6 mb-6 mx-8">
+                                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                        <span class="text-2xl">📬</span>
+                                        Propuestas Recibidas (${pendingProposals.length})
+                                    </h3>
+                                    <div class="space-y-4">
+                                        ${pendingProposals.map(p => `
+                                            <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-yellow-200 dark:border-yellow-700">
+                                                <div class="flex items-center justify-between mb-3">
+                                                    <div>
+                                                        <span class="font-semibold text-gray-900 dark:text-white">${p.fromUserName}</span>
+                                                        <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">${formatRelativeTime(p.createdAt)}</span>
+                                                    </div>
+                                                    <span class="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded-full">Pendiente</span>
+                                                </div>
+                                                <div class="grid md:grid-cols-2 gap-3 text-sm mb-3">
+                                                    <div>
+                                                        <span class="font-medium text-gray-700 dark:text-gray-300">Ofrece:</span>
+                                                        <ul class="mt-1">${p.offeredCards.map(c => '<li class="text-gray-600 dark:text-gray-400 flex items-center gap-1">' + (c.image ? '<img src="' + c.image + '" class="w-6 h-8 object-contain rounded">' : '') + ' ' + c.name + '</li>').join('')}</ul>
+                                                    </div>
+                                                    <div>
+                                                        <span class="font-medium text-gray-700 dark:text-gray-300">Busca:</span>
+                                                        <ul class="mt-1">${p.wantedCards.map(c => '<li class="text-gray-600 dark:text-gray-400 flex items-center gap-1">' + (c.image ? '<img src="' + c.image + '" class="w-6 h-8 object-contain rounded">' : '') + ' ' + c.name + '</li>').join('')}</ul>
+                                                    </div>
+                                                </div>
+                                                ${p.message ? '<p class="text-sm text-gray-500 dark:text-gray-400 italic mb-3">"' + p.message + '"</p>' : ''}
+                                                <div class="flex gap-2">
+                                                    <button onclick="viewProposalDetails('${p.id}', '${tradeId}')"
+                                                            class="px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white rounded text-sm font-semibold">
+                                                        Ver Detalles
+                                                    </button>
+                                                    <button onclick="acceptProposal('${p.id}', '${tradeId}'); this.closest('.fixed').remove();"
+                                                            class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded text-sm font-semibold">
+                                                        ✅ Aceptar
+                                                    </button>
+                                                    <button onclick="rejectProposal('${p.id}', '${tradeId}'); this.closest('.fixed').remove();"
+                                                            class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-sm font-semibold">
+                                                        ❌ Rechazar
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>`;
+                            }
+                            return '';
+                        })()}
                         
                         <!-- Action Buttons -->
                         <div class="flex gap-3 justify-center">
