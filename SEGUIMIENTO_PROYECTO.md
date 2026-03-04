@@ -16,7 +16,7 @@
 - **GitHub**: https://github.com/Eupho4/TCGtrading.git (rama `main`)
 - **API externa**: TCGdex API (https://api.tcgdex.net/v2)
 
-## Estado Actual (03/03/2026) — DEPLOYMENT EN RAILWAY FUNCIONANDO
+## Estado Actual (04/03/2026) — DEPLOYMENT EN RAILWAY FUNCIONANDO
 
 ### ✅ Lo que funciona:
 - **22,721 cartas** migradas a Railway PostgreSQL
@@ -26,13 +26,15 @@
 - **Imágenes** se ven correctamente (WebP alta calidad desde TCGdex)
 - **Frontend** desplegado y funcionando en Railway
 - **server-hybrid.js** configurado para Railway (sin JOINs a tablas que no existían)
+- **Sistema de intercambios**: propuestas, aceptar/rechazar, ver detalles funcional
+- **Display de cartas mejorado** en modales de intercambio/propuesta (función compartida `generateTradeCardHTML`)
+- **Botón "Ver Propuestas"** en sección de intercambios para trades con propuestas pendientes
+- **Chat**: icono flotante siempre visible cuando usuario autenticado
+- **Chat**: ambos usuarios registrados como participantes al inicializar chat
 
 ### 🔧 TAREA PENDIENTE — Arreglar imágenes rotas en sets con punto:
 - **Problema**: Sets con punto en el ID (ej: `sm3.5`, `ex5.5`, `sv03.5`, `sv04.5`, `sv06.5`, `me02.5`, `sv10.5b`, `sv10.5w`, `sm7.5`, `swsh3.5`, `swsh10.5`, `swsh12.5`) tienen URLs de imágenes que devuelven 404.
 - **Causa**: Las URLs de TCGdex usan el set ID sin punto en la ruta. Ej: `sm3.5` → la URL correcta es `.../sm35/...` no `.../sm3.5/...`
-- **Ejemplo**: `Shining Rayquaza` (sm3.5-56)
-  - ❌ URL actual: `https://assets.tcgdex.net/en/sm/sm3.5/56/high.webp` → 404
-  - ✅ URL correcta: `https://assets.tcgdex.net/en/sm/sm35/56/high.webp` → 200
 - **Script creado**: `fix-dot-urls.js` — listo para ejecutar, no se ha ejecutado todavía
 - **Acción**: Ejecutar `node fix-dot-urls.js` para arreglar todas las URLs de sets con punto
 
@@ -78,27 +80,27 @@
 4. ✅ Restaurar imágenes desde TCGdex (22,755 cartas)
 5. ✅ Eliminar bloqueo placeholder TCGdex en frontend
 6. ✅ Arreglar bug: Cartas borradas reaparecen en propuestas
-7. 🔧 **PENDIENTE DEPLOY**: Cambios en `js/app-ui.js` (bug cartas borradas + logs debug)
-8. 🔧 **PENDIENTE**: Arreglar bug chat no aparece al otro usuario (archivo `js/modules/chat.js` corrupto, necesita restauración)
-9. 🔧 **INVESTIGAR**: Bug no se pueden añadir múltiples cartas (logs añadidos, necesita prueba en web)
-10. ⏳ Ejecutar `node fix-dot-urls.js` para arreglar imágenes de sets con punto (sm3.5, ex5.5, etc.)
+7. ✅ Fix viewProposalDetails: createdBy → userId
+8. ✅ Botón "Ver Propuestas" en sección de intercambios
+9. ✅ Mejorar display de cartas en modales (función compartida `generateTradeCardHTML`)
+10. ✅ Fix chat: icono flotante siempre visible cuando autenticado (`chat-ui.js` → `updateMinimizedBar`)
+11. ✅ Fix chat: registrar AMBOS usuarios como participantes en `initializeTradeChat` (`chat.js`)
+12. ✅ Fix chat: corregir parámetros en `openTradeChat` (evitar doble prefijo `trade_trade_` y pasar `otherUserId` correcto)
+13. ⏳ **PENDIENTE TEST**: Verificar que el chat funciona entre 2 cuentas (enviar mensaje y que aparezca al otro)
+14. ⏳ Ejecutar `node fix-dot-urls.js` para arreglar imágenes de sets con punto
+15. 📋 Sistema 'Disponible para Intercambio' en colecciones (prioridad media)
 
-## Bugs Reportados (04/03/2026)
-1. ✅ **Cartas borradas reaparecen** - ARREGLADO (limpiar contenedores antes de pre-cargar)
-2. 🔧 **No se pueden añadir múltiples cartas** - Logs añadidos, pendiente investigación
-3. 🔧 **Chat no aparece al otro usuario** - Archivo corrupto, necesita restauración y fix
+## Bugs Reportados y Estado (04/03/2026)
+1. ✅ **Cartas borradas reaparecen** - ARREGLADO
+2. ✅ **Chat no aparece al otro usuario** - ARREGLADO (2 bugs: parámetros incorrectos en `openTradeChat` + solo se registraba 1 participante)
+3. ✅ **Icono flotante de chat desaparece** - ARREGLADO (ahora visible siempre que usuario está autenticado)
+4. 🔧 **No se pueden añadir múltiples cartas** - Logs añadidos, pendiente investigación
 
-## Comandos Git Bloqueados
-- Los comandos `git` se están cancelando automáticamente en Windsurf
-- **SOLUCIÓN TEMPORAL**: Usuario debe ejecutar manualmente en PowerShell:
-  ```powershell
-  git checkout HEAD -- js/modules/chat.js
-  git add js/app-ui.js
-  git commit -m "Fix: Bug cartas borradas + logs debug"
-  git pull origin main --rebase
-  git push origin main
-  ```
+## Cambios en archivos clave (sesión 04/03/2026 tarde)
+- `js/modules/chat.js` — `initializeTradeChat` ahora registra AMBOS usuarios como participantes y añade chat a `userChats` de ambos
+- `js/modules/chat-ui.js` — `updateMinimizedBar` muestra barra siempre si usuario autenticado (no depende de chats activos)
+- `js/app-ui.js` — `openTradeChat` pasa `realTradeId` (sin prefijo) + `otherUserId` correcto a `initializeTradeChat`. Añadida función `generateTradeCardHTML`, botón "Ver Propuestas"
 
 ---
-*Última actualización: 04/03/2026 11:55 — Sesión PC trabajo*
+*Última actualización: 04/03/2026 17:00 — Sesión PC trabajo*
 *Contexto guardado para futuras conversaciones*
