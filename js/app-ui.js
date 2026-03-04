@@ -2538,6 +2538,10 @@ function preloadProposalCards(originalTrade) {
 
     console.log('📋 Pre-cargando cartas para propuesta:', originalTrade);
 
+    // Limpiar contenedores antes de pre-cargar (evita duplicados)
+    offeredContainer.innerHTML = '';
+    wantedContainer.innerHTML = '';
+
     // Pre-cargar las cartas que el otro busca (para que las ofrezcas)
     originalTrade.wantedCards.forEach((card, index) => {
         console.log('📤 Pre-cargando carta ofrecida:', card);
@@ -3072,27 +3076,8 @@ window.handleProposalSubmit = function (event, originalTradeId) {
         return;
     }
 
-    // Actualizar el intercambio original con las cartas extras
+    // Actualizar el intercambio original SOLO con metadata (no modificar cartas)
     if (originalTradeData) {
-        // Añadir las cartas ofrecidas como cartas adicionales que se buscan
-        proposalData.offeredCards.forEach(card => {
-            // Verificar si la carta ya existe
-            const exists = originalTradeData.wantedCards.some(wc =>
-                wc.name === card.name &&
-                wc.condition === card.condition &&
-                wc.language === card.language
-            );
-
-            if (!exists) {
-                originalTradeData.wantedCards.push({
-                    ...card,
-                    fromProposal: true,
-                    proposalId: proposalData.id,
-                    addedBy: proposalData.fromUserName
-                });
-            }
-        });
-
         // Marcar que tiene propuestas
         originalTradeData.hasProposals = true;
         originalTradeData.proposalCount = (originalTradeData.proposalCount || 0) + 1;
