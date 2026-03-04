@@ -4466,8 +4466,13 @@ function viewTradeDetails(tradeId) {
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
 
+    // Usar cartas finales si el intercambio fue completado
+    const isCompleted = trade.status === 'completed';
+    const displayOffered = trade.finalOfferedCards || trade.offeredCards;
+    const displayWanted = trade.finalWantedCards || trade.wantedCards;
+
     // Generar HTML para las cartas ofrecidas con diseño mejorado
-    const offeredCardsHTML = trade.offeredCards.map(card => `
+    const offeredCardsHTML = displayOffered.map(card => `
                 <div class="group relative bg-gradient-to-b from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300">
                     <!-- Imagen de la carta -->
                     <div class="relative aspect-[3/4] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
@@ -4512,14 +4517,14 @@ function viewTradeDetails(tradeId) {
             `).join('');
 
     // Determinar el grid layout basado en el número de cartas ofrecidas
-    const offeredGridClass = trade.offeredCards.length === 1
+    const offeredGridClass = displayOffered.length === 1
         ? 'flex justify-center'
-        : trade.offeredCards.length === 2
+        : displayOffered.length === 2
             ? 'grid grid-cols-1 md:grid-cols-2 gap-4 justify-items-center'
             : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center';
 
     // Generar HTML para las cartas buscadas con el mismo diseño mejorado
-    const wantedCardsHTML = trade.wantedCards.map(card => `
+    const wantedCardsHTML = displayWanted.map(card => `
                 <div class="group relative bg-gradient-to-b from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300">
                     <!-- Imagen de la carta -->
                     <div class="relative aspect-[3/4] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
@@ -4564,9 +4569,9 @@ function viewTradeDetails(tradeId) {
             `).join('');
 
     // Determinar el grid layout basado en el número de cartas buscadas
-    const wantedGridClass = trade.wantedCards.length === 1
+    const wantedGridClass = displayWanted.length === 1
         ? 'flex justify-center'
-        : trade.wantedCards.length === 2
+        : displayWanted.length === 2
             ? 'grid grid-cols-1 md:grid-cols-2 gap-4 justify-items-center'
             : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center';
 
