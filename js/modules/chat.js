@@ -221,21 +221,23 @@ class ChatManager {
         }, 100);
         
         // Actualizar último mensaje en metadata
-        await update(chatMetaRef, {
+        const otherUserId = await this.getOtherUserId(chatId);
+        const metaUpdates = {
             lastMessage: message,
             lastMessageTime: serverTimestamp(),
-            lastMessageSender: currentUser.uid,
-            [`unreadCount_${this.getOtherUserId(chatId)}`]: serverTimestamp() // Incrementar contador para el otro usuario
-        });
+            lastMessageSender: currentUser.uid
+        };
+        if (otherUserId) {
+            metaUpdates[`unreadCount_${otherUserId}`] = serverTimestamp();
+        }
+        await update(chatMetaRef, metaUpdates);
         
         // SIEMPRE actualizar userChats cuando se envía un mensaje
-        // Esto asegura que el chat aparezca en la lista incluso si fue borrado
         const userChatRef = ref(this.realtimeDb, `userChats/${currentUser.uid}/${chatId}`);
         await set(userChatRef, {
             timestamp: serverTimestamp(),
             lastActivity: serverTimestamp()
         });
-        console.log('📝 Chat agregado/actualizado en userChats');
         
         // Disparar evento para actualizar la UI
         window.dispatchEvent(new CustomEvent('chatRestored', {
@@ -249,16 +251,39 @@ class ChatManager {
     }
     
     // Obtener el ID del otro usuario en el chat
-    getOtherUserId(chatId) {
-        // Extraer del chatId que tiene formato: trade_TRADEID
-        // Por ahora retornamos un placeholder, esto se mejorará
-        return 'otherUser';
+    async getOtherUserId(chatId) {
+        const currentUser = this.auth.currentUser;
+        if (!currentUser) return null;
+        const chatMetaRef = ref(this.realtimeDb, `chats/${chatId}/metadata/participants`);
+        const snapshot = await get(chatMetaRef);
+        if (snapshot.exists()) {
+            const participants = snapshot.val();
+            const otherUserId = Object.keys(participants).find(uid => uid !== currentUser.uid);
+            return otherUserId || null;
+        }
+        return null;
     }
     
     // Notificar al otro usuario sobre nuevo mensaje
     async notifyOtherUser(chatId, message) {
-        // Aquí se implementará la notificación push/sonido
-        console.log('📬 Notificando nuevo mensaje en chat:', chatId);
+        const currentUser = this.auth.currentUser;
+        if (!currentUser) return;
+        
+        const otherUserId = await this.getOtherUserId(chatId);
+        if (!otherUserId) {
+            console.warn('⚠️ No se encontró el otro usuario en el chat');
+            return;
+        }
+        
+        // Añadir el chat a la lista userChats del otro usuario
+        const otherUserChatRef = ref(this.realtimeDb, `userChats/${otherUserId}/${chatId}`);
+        await set(otherUserChatRef, {
+            timestamp: serverTimestamp(),
+            lastActivity: serverTimestamp(),
+            hasUnread: true
+        });
+        
+        console.log('📬 Chat añadido a lista del usuario:', otherUserId);
     }
 
     // Enviar notificación de carta ofrecida
