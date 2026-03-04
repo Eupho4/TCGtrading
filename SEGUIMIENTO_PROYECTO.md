@@ -16,7 +16,11 @@
 - **GitHub**: https://github.com/Eupho4/TCGtrading.git (rama `main`)
 - **API externa**: TCGdex API (https://api.tcgdex.net/v2)
 
+<<<<<<< HEAD
 ## Estado Actual (04/03/2026) — SISTEMA DE COLECCIÓN IMPLEMENTADO
+=======
+## Estado Actual (04/03/2026) — DEPLOYMENT EN RAILWAY FUNCIONANDO
+>>>>>>> 3374b6c73b22c9570b47e5687f02988de431badc
 
 ### ✅ Lo que funciona:
 - **22,721 cartas** migradas a Railway PostgreSQL
@@ -25,6 +29,7 @@
 - **Paginación** funciona correctamente al cambiar de página
 - **Imágenes** se ven correctamente (WebP alta calidad desde TCGdex)
 - **Frontend** desplegado y funcionando en Railway
+<<<<<<< HEAD
 - **server-simple.js** es el servidor en producción (Railway usa `npm start` → `server-simple.js`)
 - **Filtros de búsqueda** funcionando correctamente:
   - ✅ Filtro por **set** (nombre exacto, no trae "Base Set 2" cuando filtras "Base Set")
@@ -52,6 +57,20 @@
 5. **Campos "Para intercambio/venta"** en colección personal
 6. **Notificaciones** — Oferta recibida, trade completado
 7. **Perfil público** — Reputación, historial de trades
+=======
+- **server-hybrid.js** configurado para Railway (sin JOINs a tablas que no existían)
+- **Sistema de intercambios**: propuestas, aceptar/rechazar, ver detalles funcional
+- **Display de cartas mejorado** en modales de intercambio/propuesta (función compartida `generateTradeCardHTML`)
+- **Botón "Ver Propuestas"** en sección de intercambios para trades con propuestas pendientes
+- **Chat**: icono flotante siempre visible cuando usuario autenticado
+- **Chat**: ambos usuarios registrados como participantes al inicializar chat
+
+### 🔧 TAREA PENDIENTE — Arreglar imágenes rotas en sets con punto:
+- **Problema**: Sets con punto en el ID (ej: `sm3.5`, `ex5.5`, `sv03.5`, `sv04.5`, `sv06.5`, `me02.5`, `sv10.5b`, `sv10.5w`, `sm7.5`, `swsh3.5`, `swsh10.5`, `swsh12.5`) tienen URLs de imágenes que devuelven 404.
+- **Causa**: Las URLs de TCGdex usan el set ID sin punto en la ruta. Ej: `sm3.5` → la URL correcta es `.../sm35/...` no `.../sm3.5/...`
+- **Script creado**: `fix-dot-urls.js` — listo para ejecutar, no se ha ejecutado todavía
+- **Acción**: Ejecutar `node fix-dot-urls.js` para arreglar todas las URLs de sets con punto
+>>>>>>> 3374b6c73b22c9570b47e5687f02988de431badc
 
 ## Estructura de Base de Datos (Railway)
 - `cards` — 22,721 registros. Columnas: id, name, number, set_id, rarity_id, hp, types, subtypes, rules, images (JSONB), tcgplayer, cardmarket, legal, artist, flavor_text, national_pokedex_numbers, attacks, weaknesses, resistances, retreat_cost, converted_retreat_cost
@@ -114,6 +133,7 @@
 3. ✅ Arreglar paginación frontend
 4. ✅ Restaurar imágenes desde TCGdex (22,755 cartas)
 5. ✅ Eliminar bloqueo placeholder TCGdex en frontend
+<<<<<<< HEAD
 6. ✅ Arreglar filtros de búsqueda (set, serie, tipo, trainer, energy, rareza)
 7. ✅ Implementar sistema de colección personal con Firebase
 8. ✅ Modal "Agregar por Set" con condición y cantidad
@@ -130,3 +150,30 @@
 ---
 *Última actualización: 04/03/2026 — Sistema de colección implementado*
 *Commits recientes: 77bd3f8 (bulk modal fixes), e52052d (collection system), cdc0236 (trainer/energy filters)*
+=======
+6. ✅ Arreglar bug: Cartas borradas reaparecen en propuestas
+7. ✅ Fix viewProposalDetails: createdBy → userId
+8. ✅ Botón "Ver Propuestas" en sección de intercambios
+9. ✅ Mejorar display de cartas en modales (función compartida `generateTradeCardHTML`)
+10. ✅ Fix chat: icono flotante siempre visible cuando autenticado (`chat-ui.js` → `updateMinimizedBar`)
+11. ✅ Fix chat: registrar AMBOS usuarios como participantes en `initializeTradeChat` (`chat.js`)
+12. ✅ Fix chat: corregir parámetros en `openTradeChat` (evitar doble prefijo `trade_trade_` y pasar `otherUserId` correcto)
+13. ⏳ **PENDIENTE TEST**: Verificar que el chat funciona entre 2 cuentas (enviar mensaje y que aparezca al otro)
+14. ⏳ Ejecutar `node fix-dot-urls.js` para arreglar imágenes de sets con punto
+15. 📋 Sistema 'Disponible para Intercambio' en colecciones (prioridad media)
+
+## Bugs Reportados y Estado (04/03/2026)
+1. ✅ **Cartas borradas reaparecen** - ARREGLADO
+2. ✅ **Chat no aparece al otro usuario** - ARREGLADO (2 bugs: parámetros incorrectos en `openTradeChat` + solo se registraba 1 participante)
+3. ✅ **Icono flotante de chat desaparece** - ARREGLADO (ahora visible siempre que usuario está autenticado)
+4. 🔧 **No se pueden añadir múltiples cartas** - Logs añadidos, pendiente investigación
+
+## Cambios en archivos clave (sesión 04/03/2026 tarde)
+- `js/modules/chat.js` — `initializeTradeChat` ahora registra AMBOS usuarios como participantes y añade chat a `userChats` de ambos
+- `js/modules/chat-ui.js` — `updateMinimizedBar` muestra barra siempre si usuario autenticado (no depende de chats activos)
+- `js/app-ui.js` — `openTradeChat` pasa `realTradeId` (sin prefijo) + `otherUserId` correcto a `initializeTradeChat`. Añadida función `generateTradeCardHTML`, botón "Ver Propuestas"
+
+---
+*Última actualización: 04/03/2026 17:00 — Sesión PC trabajo*
+*Contexto guardado para futuras conversaciones*
+>>>>>>> 3374b6c73b22c9570b47e5687f02988de431badc

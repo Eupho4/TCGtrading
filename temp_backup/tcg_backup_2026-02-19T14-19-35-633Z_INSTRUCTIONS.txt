@@ -1,0 +1,60 @@
+
+INSTRUCCIONES PARA RESTAURAR LA BASE DE DATOS
+============================================
+
+🎯 ESTE BACKUP CONTIENEN TODAS LAS CARTAS DE TCGDEX
+
+📊 ESTADÍSTICAS:
+- Cartas: 22721
+- Sets: 195
+- Tipos: 39
+- Rarezas: 4
+- Artistas: 407
+- Con ataques: 19171
+- Con debilidades: 13866
+- Tamaño archivo JSON: 39.78 MB
+
+📁 ARCHIVOS:
+- Backup JSON: tcg_complete_backup_2026-02-19T14-19-35-633Z.json
+- Instrucciones: tcg_backup_2026-02-19T14-19-35-633Z_INSTRUCTIONS.txt
+
+🛠️ PASOS PARA RESTAURAR EN NUEVO PC:
+
+1. INSTALAR POSTGRESQL
+   - Descargar desde: https://www.postgresql.org/download/windows/
+   - Usar password: Badalona.17
+   - Puerto: 5432
+
+2. CREAR BASE DE DATOS
+   - Abrir "SQL Shell (psql)"
+   - Ejecutar: CREATE DATABASE pokemon_tcg;
+
+3. RESTAURAR DESDE JSON
+   - Copiar este archivo a nuevo PC
+   - Ejecutar script: import-json-to-db.js
+   - O usar: node -e "const fs = require('fs'); const { Pool } = require('pg'); const data = JSON.parse(fs.readFileSync('tcg_complete_backup_2026-02-19T14-19-35-633Z.json')); const pool = new Pool({connectionString: 'postgresql://postgres:Badalona.17@localhost:5432/pokemon_tcg'}); pool.query('BEGIN').then(() => { const promises = data.cards.map(card => pool.query('INSERT INTO cards (id, name, number, set_id, rarity_id, hp, types, subtypes, rules, images, tcgplayer, cardmarket, legal, artist, flavor_text, national_pokedex_numbers, attacks, weaknesses, resistances, retreat_cost, converted_retreat_cost) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)', [card.id, card.name, card.number, card.set_id, card.rarity_id, card.hp, card.types, card.subtypes, card.rules, card.images, card.tcgplayer, card.cardmarket, card.legal, card.artist, card.flavor_text, card.national_pokedex_numbers, card.attacks, card.weaknesses, card.resistances, card.retreat_cost, card.converted_retreat_cost])); return Promise.all(promises); }).then(() => pool.query('COMMIT')).then(() => console.log('✅ Restauración completada')).catch(err => console.error('❌ Error:', err)).finally(() => pool.end());"
+
+4. CONFIGURAR PROYECTO
+   - Copiar carpeta TCGtrading completa
+   - Actualizar .env si es necesario
+   - Ejecutar: node server-hybrid.js
+
+5. VERIFICAR
+   - Abrir http://localhost:3000
+   - Buscar "charizard"
+   - Deberías ver resultados
+
+📋 PARA SUBIR A LA NUBE:
+1. Sube tcg_complete_backup_2026-02-19T14-19-35-633Z.json a Google Drive/Dropbox
+2. Sube tcg_backup_2026-02-19T14-19-35-633Z_INSTRUCTIONS.txt
+3. Sube toda la carpeta TCGtrading
+4. Listo para descargar en casa
+
+🎉 ¡TODO LISTO PARA CAMBIAR DE PC!
+
+NOTAS:
+- Este backup contiene 22721 cartas de TCGdex
+- Las URLs de imágenes están guardadas
+- Todos los datos (ataques, debilidades, sets) están incluidos
+- Formato JSON es más portable que SQL
+- Puedes abrir este archivo en cualquier editor de texto

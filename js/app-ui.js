@@ -2094,21 +2094,33 @@ function displayTrades(trades, containerId) {
         const escapedTitle = escapeForOnclick(trade.title);
         const escapedUserId = escapeForOnclick(trade.userId);
 
+        // Usar cartas finales si el intercambio fue completado con propuesta aceptada
+        const displayOffered = trade.finalOfferedCards || trade.offeredCards;
+        const displayWanted = trade.finalWantedCards || trade.wantedCards;
+        const isCompleted = trade.status === 'completed';
+        const hasProposals = trade.hasProposals || trade.proposalCount > 0;
+
         tradesHTML += `
-                    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600 hover:border-orange-300 dark:hover:border-orange-400 transition-colors">
+                    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border ${isCompleted ? 'border-green-300 dark:border-green-600' : hasProposals ? 'border-yellow-300 dark:border-yellow-600' : 'border-gray-200 dark:border-gray-600'} hover:border-orange-300 dark:hover:border-orange-400 transition-colors">
                         <div class="flex justify-between items-start mb-3">
                             <div>
                                 <h4 class="font-semibold text-gray-800 dark:text-white">${trade.title}</h4>
                                 <p class="text-sm text-gray-600 dark:text-gray-300">${trade.description}</p>
                             </div>
-                            <span class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-400">${formatDate(trade.createdAt)}</span>
+                            <div class="flex items-center gap-2">
+                                ${isCompleted ? '<span class="text-xs px-2 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full font-medium">✅ Completado</span>' : ''}
+                                ${hasProposals && !isCompleted ? `<span class="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded-full font-medium">📬 ${trade.proposalCount || ''} Propuesta(s)</span>` : ''}
+                                <span class="text-xs text-gray-500 dark:text-gray-400">${formatDate(trade.createdAt)}</span>
+                            </div>
                         </div>
+                        
+                        ${isCompleted && trade.finalOfferedCards ? '<div class="text-xs text-green-600 dark:text-green-400 mb-2 font-medium">📋 Cartas acordadas en la propuesta aceptada:</div>' : ''}
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
-                                <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📤 Ofrezco:</h5>
+                                <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📤 ${isCompleted && trade.finalOfferedCards ? 'Recibe:' : 'Ofrezco:'}</h5>
                                 <div class="space-y-2">
-                                    ${trade.offeredCards.map(card => `
+                                    ${displayOffered.map(card => `
                                         <div class="flex items-center justify-between bg-white dark:bg-gray-600 px-3 py-2 rounded border border-gray-200 dark:border-gray-500">
                                             <div class="flex items-center gap-2 flex-1">
                                                 ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded">` : ''}
@@ -2126,9 +2138,9 @@ function displayTrades(trades, containerId) {
                                 </div>
                             </div>
                             <div>
-                                <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📥 Busco:</h5>
+                                <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📥 ${isCompleted && trade.finalWantedCards ? 'Entrega:' : 'Busco:'}</h5>
                                 <div class="space-y-2">
-                                    ${trade.wantedCards.map(card => `
+                                    ${displayWanted.map(card => `
                                         <div class="flex items-center justify-between bg-white dark:bg-gray-600 px-3 py-2 rounded border border-gray-200 dark:border-gray-500">
                                             <div class="flex items-center gap-2 flex-1">
                                                 ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded">` : ''}
@@ -2162,6 +2174,11 @@ function displayTrades(trades, containerId) {
                                 `}
                                 
                                 ${trade.userId === currentUser?.uid ? `
+                                    ${hasProposals ? `
+                                        <button class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-xs font-semibold" onclick="viewTradeDetails('${trade.id}')">
+                                            📬 Ver Propuestas
+                                        </button>
+                                    ` : ''}
                                     <button class="btn-secondary px-3 py-1 rounded text-xs" onclick="editTrade('${trade.id}')">
                                         ✏️ Editar
                                     </button>
@@ -2349,7 +2366,15 @@ window.openTradeChat = async function (tradeId, otherUserId, tradeTitle) {
         // Inicializar o unirse al chat del intercambio
         // Extraer el ID real del intercambio (sin el prefijo trade_)
         const realTradeId = tradeId.replace(/^trade_/, '');
-        await window.chatManager.initializeTradeChat(chatId, realTradeId, tradeTitle || displayName, otherUserId);
+        // Obtener nombre del otro usuario si es posible
+        let otherUserName = 'Usuario';
+        if (trade) {
+            if (trade.userId !== currentUser.uid) {
+                otherUserName = trade.userName || trade.user || 'Usuario';
+            }
+        }
+        // initializeTradeChat(tradeId, otherUserId, otherUserName) - pasa realTradeId para evitar doble prefijo
+        await window.chatManager.initializeTradeChat(realTradeId, otherUserId, otherUserName);
 
         // Abrir ventana de chat
         await window.chatUI.openChat(chatId);
@@ -2538,6 +2563,10 @@ function preloadProposalCards(originalTrade) {
 
     console.log('📋 Pre-cargando cartas para propuesta:', originalTrade);
 
+    // Limpiar contenedores antes de pre-cargar (evita duplicados)
+    offeredContainer.innerHTML = '';
+    wantedContainer.innerHTML = '';
+
     // Pre-cargar las cartas que el otro busca (para que las ofrezcas)
     originalTrade.wantedCards.forEach((card, index) => {
         console.log('📤 Pre-cargando carta ofrecida:', card);
@@ -2650,9 +2679,15 @@ function createProposalCardInput(type, index, cardData = {}, isPreloaded = false
 // Función para añadir carta a la propuesta
 window.addCardToProposal = function (type) {
     const container = document.getElementById(`proposal${type === 'offered' ? 'Offered' : 'Wanted'}CardsContainer`);
+    if (!container) {
+        console.error('❌ Container not found:', `proposal${type === 'offered' ? 'Offered' : 'Wanted'}CardsContainer`);
+        return;
+    }
     const index = container.children.length;
+    console.log('➕ Añadiendo carta:', { type, index, currentCards: index });
     const cardHtml = createProposalCardInput(type, index);
     container.insertAdjacentHTML('beforeend', cardHtml);
+    console.log('✅ Carta añadida. Total ahora:', container.children.length);
 };
 
 // Función para buscar cartas en la API desde el modal de propuesta
@@ -3072,27 +3107,8 @@ window.handleProposalSubmit = function (event, originalTradeId) {
         return;
     }
 
-    // Actualizar el intercambio original con las cartas extras
+    // Actualizar el intercambio original SOLO con metadata (no modificar cartas)
     if (originalTradeData) {
-        // Añadir las cartas ofrecidas como cartas adicionales que se buscan
-        proposalData.offeredCards.forEach(card => {
-            // Verificar si la carta ya existe
-            const exists = originalTradeData.wantedCards.some(wc =>
-                wc.name === card.name &&
-                wc.condition === card.condition &&
-                wc.language === card.language
-            );
-
-            if (!exists) {
-                originalTradeData.wantedCards.push({
-                    ...card,
-                    fromProposal: true,
-                    proposalId: proposalData.id,
-                    addedBy: proposalData.fromUserName
-                });
-            }
-        });
-
         // Marcar que tiene propuestas
         originalTradeData.hasProposals = true;
         originalTradeData.proposalCount = (originalTradeData.proposalCount || 0) + 1;
@@ -3103,7 +3119,10 @@ window.handleProposalSubmit = function (event, originalTradeId) {
         const ownerTrades = JSON.parse(localStorage.getItem(ownerKey) || '[]');
         const tradeIndex = ownerTrades.findIndex(t => t.id === originalTradeId);
         if (tradeIndex !== -1) {
-            ownerTrades[tradeIndex] = originalTradeData;
+            // Limpiar ownerKey antes de guardar (no debe filtrarse al trade)
+            const cleanTrade = { ...originalTradeData };
+            delete cleanTrade.ownerKey;
+            ownerTrades[tradeIndex] = cleanTrade;
             localStorage.setItem(ownerKey, JSON.stringify(ownerTrades));
         }
 
@@ -3236,6 +3255,12 @@ function loadNotifications() {
                             </div>
                         </div>
                         <div class="flex gap-2">
+                            ${notif.proposalId && notif.tradeId ? `
+                                <button onclick="viewProposalDetails('${notif.proposalId}', '${notif.tradeId}')"
+                                        class="px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white rounded text-sm">
+                                    Ver Propuesta
+                                </button>
+                            ` : ''}
                             ${notif.tradeId ? `
                                 <button onclick="viewTradeDetails('${notif.tradeId}')"
                                         class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm">
@@ -3668,8 +3693,7 @@ window.acceptProposal = function (proposalId, tradeId) {
         proponentNotifications.unshift(notification);
         localStorage.setItem(proponentNotificationsKey, JSON.stringify(proponentNotifications));
 
-        // Marcar el intercambio como completado
-        const allTrades = [];
+        // Marcar el intercambio como completado Y actualizar cartas con las de la propuesta
         const userKeys = Object.keys(localStorage).filter(key => key.startsWith('userTrades_'));
         userKeys.forEach(key => {
             const trades = JSON.parse(localStorage.getItem(key) || '[]');
@@ -3678,6 +3702,12 @@ window.acceptProposal = function (proposalId, tradeId) {
                 trades[tradeIndex].status = 'completed';
                 trades[tradeIndex].completedAt = new Date().toISOString();
                 trades[tradeIndex].completedWith = proposal.fromUserId;
+                // Actualizar las cartas del intercambio con las de la propuesta aceptada
+                trades[tradeIndex].finalOfferedCards = proposal.offeredCards;
+                trades[tradeIndex].finalWantedCards = proposal.wantedCards;
+                trades[tradeIndex].acceptedProposalId = proposalId;
+                // Limpiar ownerKey si se filtró
+                delete trades[tradeIndex].ownerKey;
                 localStorage.setItem(key, JSON.stringify(trades));
             }
         });
@@ -3724,52 +3754,8 @@ window.viewProposalDetails = function (proposalId, tradeId) {
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
 
-    // Generar HTML para las cartas con el mismo diseño que viewTradeDetails
-    const generateCardHTML = (cards) => cards.map(card => `
-                <div class="group relative bg-gradient-to-b from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300">
-                    <!-- Imagen de la carta -->
-                    <div class="relative aspect-[3/4] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
-                        ${card.image ? `
-                            <img src="${card.image}" alt="${card.name}" 
-                                 class="w-full h-full object-contain p-2">
-                        ` : `
-                            <div class="w-full h-full flex items-center justify-center">
-                                <span class="text-8xl opacity-50">🎴</span>
-                            </div>
-                        `}
-                        <!-- Badge de condición en la esquina -->
-                        <div class="absolute top-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded-full text-xs font-bold">
-                            ${card.condition || 'NM'}
-                        </div>
-                    </div>
-                    
-                    <!-- Información de la carta -->
-                    <div class="p-3 space-y-2">
-                        <h4 class="font-bold text-gray-900 dark:text-white text-center">
-                            ${card.name}
-                        </h4>
-                        
-                        <!-- Pills de información -->
-                        <div class="flex flex-wrap gap-1 justify-center">
-                            ${card.set ? `
-                                <span class="inline-block bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full text-xs">
-                                    ${card.set}
-                                </span>
-                            ` : ''}
-                            ${card.number ? `
-                                <span class="inline-block bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded-full text-xs">
-                                    #${card.number}
-                                </span>
-                            ` : ''}
-                            ${card.language ? `
-                                <span class="inline-block bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-1 rounded-full text-xs">
-                                    ${card.language}
-                                </span>
-                            ` : ''}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+    // Usar función compartida para generar cartas
+    const generateCardHTML = generateTradeCardHTML;
 
     modal.innerHTML = `
                 <div class="bg-white dark:bg-gray-800 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
@@ -3844,7 +3830,7 @@ window.viewProposalDetails = function (proposalId, tradeId) {
                                     <span class="text-2xl">📤</span>
                                     ${proposal.fromUserName} Ofrece
                                 </h3>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                <div class="${getTradeCardGridClass(proposal.offeredCards.length)}">
                                     ${generateCardHTML(proposal.offeredCards)}
                                 </div>
                             </div>
@@ -3866,7 +3852,7 @@ window.viewProposalDetails = function (proposalId, tradeId) {
                                     <span class="text-2xl">📥</span>
                                     ${proposal.fromUserName} Busca
                                 </h3>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                <div class="${getTradeCardGridClass(proposal.wantedCards.length)}">
                                     ${generateCardHTML(proposal.wantedCards)}
                                 </div>
                             </div>
@@ -3880,7 +3866,7 @@ window.viewProposalDetails = function (proposalId, tradeId) {
                             ` : ''}
                             
                             <!-- Botones de acción -->
-                            ${proposal.status === 'pending' && originalTrade && originalTrade.createdBy === currentUser.uid ? `
+                            ${proposal.status === 'pending' && originalTrade && originalTrade.userId === currentUser.uid ? `
                                 <div class="flex gap-3 justify-center mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                                     <button onclick="acceptProposal('${proposalId}', '${tradeId}'); this.closest('.fixed').remove();"
                                             class="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold">
@@ -4441,6 +4427,62 @@ window.showRatingHistory = function () {
     document.body.appendChild(modal);
 };
 
+// Función compartida para generar HTML de cartas en modales de intercambio/propuesta
+function generateTradeCardHTML(cards) {
+    return cards.map(card => `
+        <div class="group relative bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 border border-gray-200 dark:border-gray-700 w-44">
+            <!-- Imagen de la carta -->
+            <div class="relative bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-800 p-2">
+                ${card.image ? `
+                    <img src="${card.image}" alt="${card.name}" 
+                         class="w-full h-auto rounded-lg" loading="lazy">
+                ` : `
+                    <div class="w-full aspect-[3/4] flex items-center justify-center">
+                        <span class="text-6xl opacity-40">🎴</span>
+                    </div>
+                `}
+                <!-- Badge de condición -->
+                <div class="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-md"
+                     style="background-color: ${CARD_CONDITIONS[card.condition || 'NM']?.color || '#6b7280'}">
+                    ${CARD_CONDITIONS[card.condition || 'NM']?.icon || '✨'} ${card.condition || 'NM'}
+                </div>
+            </div>
+            
+            <!-- Info de la carta -->
+            <div class="px-3 py-2.5 space-y-1.5">
+                <h4 class="font-bold text-sm text-gray-900 dark:text-white text-center leading-tight line-clamp-2">
+                    ${card.name || 'Sin nombre'}
+                </h4>
+                
+                <!-- Pills compactas -->
+                <div class="flex flex-wrap gap-1 justify-center">
+                    ${card.set ? `
+                        <span class="inline-block bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded text-[10px] font-medium truncate max-w-[120px]">
+                            ${card.set}
+                        </span>
+                    ` : ''}
+                    ${card.number ? `
+                        <span class="inline-block bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                            #${card.number}
+                        </span>
+                    ` : ''}
+                </div>
+                <div class="flex justify-center">
+                    <span class="inline-block bg-green-50 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                        🌐 ${card.language || 'Español'}
+                    </span>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function getTradeCardGridClass(count) {
+    if (count === 1) return 'flex justify-center';
+    if (count === 2) return 'flex flex-wrap justify-center gap-5';
+    return 'flex flex-wrap justify-center gap-4';
+}
+
 function viewTradeDetails(tradeId) {
     console.log('👁️ Viendo detalles del intercambio:', tradeId);
 
@@ -4455,109 +4497,17 @@ function viewTradeDetails(tradeId) {
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
 
-    // Generar HTML para las cartas ofrecidas con diseño mejorado
-    const offeredCardsHTML = trade.offeredCards.map(card => `
-                <div class="group relative bg-gradient-to-b from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300">
-                    <!-- Imagen de la carta -->
-                    <div class="relative aspect-[3/4] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
-                        ${card.image ? `
-                            <img src="${card.image}" alt="${card.name}" 
-                                 class="w-full h-full object-contain p-2">
-                        ` : `
-                            <div class="w-full h-full flex items-center justify-center">
-                                <span class="text-8xl opacity-50">🎴</span>
-                            </div>
-                        `}
-                        <!-- Badge de condición en la esquina -->
-                        <div class="absolute top-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded-full text-xs font-bold">
-                            ${CARD_CONDITIONS[card.condition]?.icon || '✨'} ${card.condition || 'NM'}
-                        </div>
-                    </div>
-                    
-                    <!-- Información de la carta -->
-                    <div class="p-4 space-y-2">
-                        <h4 class="font-bold text-base text-gray-900 dark:text-white text-center line-clamp-2">
-                            ${card.name || 'Sin nombre'}
-                        </h4>
-                        
-                        <!-- Detalles en formato compacto -->
-                        <div class="flex flex-wrap gap-2 justify-center text-xs">
-                            ${card.set ? `
-                                <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full">
-                                    ${card.set}
-                                </span>
-                            ` : ''}
-                            ${card.number ? `
-                                <span class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-1 rounded-full">
-                                    #${card.number}
-                                </span>
-                            ` : ''}
-                            <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded-full">
-                                🌐 ${card.language || 'Español'}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+    // Usar cartas finales si el intercambio fue completado
+    const isCompleted = trade.status === 'completed';
+    const displayOffered = trade.finalOfferedCards || trade.offeredCards;
+    const displayWanted = trade.finalWantedCards || trade.wantedCards;
 
-    // Determinar el grid layout basado en el número de cartas ofrecidas
-    const offeredGridClass = trade.offeredCards.length === 1
-        ? 'flex justify-center'
-        : trade.offeredCards.length === 2
-            ? 'grid grid-cols-1 md:grid-cols-2 gap-4 justify-items-center'
-            : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center';
+    // Usar función compartida para generar cartas
+    const offeredCardsHTML = generateTradeCardHTML(displayOffered);
+    const offeredGridClass = getTradeCardGridClass(displayOffered.length);
 
-    // Generar HTML para las cartas buscadas con el mismo diseño mejorado
-    const wantedCardsHTML = trade.wantedCards.map(card => `
-                <div class="group relative bg-gradient-to-b from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300">
-                    <!-- Imagen de la carta -->
-                    <div class="relative aspect-[3/4] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
-                        ${card.image ? `
-                            <img src="${card.image}" alt="${card.name}" 
-                                 class="w-full h-full object-contain p-2">
-                        ` : `
-                            <div class="w-full h-full flex items-center justify-center">
-                                <span class="text-8xl opacity-50">🎴</span>
-                            </div>
-                        `}
-                        <!-- Badge de condición en la esquina -->
-                        <div class="absolute top-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded-full text-xs font-bold">
-                            ${CARD_CONDITIONS[card.condition]?.icon || '✨'} ${card.condition || 'NM'}
-                        </div>
-                    </div>
-                    
-                    <!-- Información de la carta -->
-                    <div class="p-4 space-y-2">
-                        <h4 class="font-bold text-base text-gray-900 dark:text-white text-center line-clamp-2">
-                            ${card.name || 'Sin nombre'}
-                        </h4>
-                        
-                        <!-- Detalles en formato compacto -->
-                        <div class="flex flex-wrap gap-2 justify-center text-xs">
-                            ${card.set ? `
-                                <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full">
-                                    ${card.set}
-                                </span>
-                            ` : ''}
-                            ${card.number ? `
-                                <span class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-1 rounded-full">
-                                    #${card.number}
-                                </span>
-                            ` : ''}
-                            <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded-full">
-                                🌐 ${card.language || 'Español'}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-
-    // Determinar el grid layout basado en el número de cartas buscadas
-    const wantedGridClass = trade.wantedCards.length === 1
-        ? 'flex justify-center'
-        : trade.wantedCards.length === 2
-            ? 'grid grid-cols-1 md:grid-cols-2 gap-4 justify-items-center'
-            : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center';
+    const wantedCardsHTML = generateTradeCardHTML(displayWanted);
+    const wantedGridClass = getTradeCardGridClass(displayWanted.length);
 
     modal.innerHTML = `
                 <div class="bg-white dark:bg-gray-900 rounded-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
@@ -4645,6 +4595,61 @@ function viewTradeDetails(tradeId) {
                                 <p class="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">${trade.description}</p>
                             </div>
                         ` : ''}
+                        
+                        <!-- Propuestas Pendientes (solo visible para el dueño del trade) -->
+                        ${(() => {
+                            const proposalsKey = `proposals_${tradeId}`;
+                            const tradeProposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
+                            const pendingProposals = tradeProposals.filter(p => p.status === 'pending');
+                            if (pendingProposals.length > 0 && currentUser && trade.userId === currentUser.uid) {
+                                return `
+                                <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-6 mb-6 mx-8">
+                                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                        <span class="text-2xl">📬</span>
+                                        Propuestas Recibidas (${pendingProposals.length})
+                                    </h3>
+                                    <div class="space-y-4">
+                                        ${pendingProposals.map(p => `
+                                            <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-yellow-200 dark:border-yellow-700">
+                                                <div class="flex items-center justify-between mb-3">
+                                                    <div>
+                                                        <span class="font-semibold text-gray-900 dark:text-white">${p.fromUserName}</span>
+                                                        <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">${formatRelativeTime(p.createdAt)}</span>
+                                                    </div>
+                                                    <span class="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded-full">Pendiente</span>
+                                                </div>
+                                                <div class="grid md:grid-cols-2 gap-3 text-sm mb-3">
+                                                    <div>
+                                                        <span class="font-medium text-gray-700 dark:text-gray-300">Ofrece:</span>
+                                                        <ul class="mt-1">${p.offeredCards.map(c => '<li class="text-gray-600 dark:text-gray-400 flex items-center gap-1">' + (c.image ? '<img src="' + c.image + '" class="w-6 h-8 object-contain rounded">' : '') + ' ' + c.name + '</li>').join('')}</ul>
+                                                    </div>
+                                                    <div>
+                                                        <span class="font-medium text-gray-700 dark:text-gray-300">Busca:</span>
+                                                        <ul class="mt-1">${p.wantedCards.map(c => '<li class="text-gray-600 dark:text-gray-400 flex items-center gap-1">' + (c.image ? '<img src="' + c.image + '" class="w-6 h-8 object-contain rounded">' : '') + ' ' + c.name + '</li>').join('')}</ul>
+                                                    </div>
+                                                </div>
+                                                ${p.message ? '<p class="text-sm text-gray-500 dark:text-gray-400 italic mb-3">"' + p.message + '"</p>' : ''}
+                                                <div class="flex gap-2">
+                                                    <button onclick="viewProposalDetails('${p.id}', '${tradeId}')"
+                                                            class="px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white rounded text-sm font-semibold">
+                                                        Ver Detalles
+                                                    </button>
+                                                    <button onclick="acceptProposal('${p.id}', '${tradeId}'); this.closest('.fixed').remove();"
+                                                            class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded text-sm font-semibold">
+                                                        ✅ Aceptar
+                                                    </button>
+                                                    <button onclick="rejectProposal('${p.id}', '${tradeId}'); this.closest('.fixed').remove();"
+                                                            class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-sm font-semibold">
+                                                        ❌ Rechazar
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>`;
+                            }
+                            return '';
+                        })()}
                         
                         <!-- Action Buttons -->
                         <div class="flex gap-3 justify-center">
