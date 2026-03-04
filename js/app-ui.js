@@ -2174,6 +2174,11 @@ function displayTrades(trades, containerId) {
                                 `}
                                 
                                 ${trade.userId === currentUser?.uid ? `
+                                    ${hasProposals ? `
+                                        <button class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-xs font-semibold" onclick="viewTradeDetails('${trade.id}')">
+                                            📬 Ver Propuestas
+                                        </button>
+                                    ` : ''}
                                     <button class="btn-secondary px-3 py-1 rounded text-xs" onclick="editTrade('${trade.id}')">
                                         ✏️ Editar
                                     </button>
@@ -3741,52 +3746,8 @@ window.viewProposalDetails = function (proposalId, tradeId) {
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
 
-    // Generar HTML para las cartas con el mismo diseño que viewTradeDetails
-    const generateCardHTML = (cards) => cards.map(card => `
-                <div class="group relative bg-gradient-to-b from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300">
-                    <!-- Imagen de la carta -->
-                    <div class="relative aspect-[3/4] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
-                        ${card.image ? `
-                            <img src="${card.image}" alt="${card.name}" 
-                                 class="w-full h-full object-contain p-2">
-                        ` : `
-                            <div class="w-full h-full flex items-center justify-center">
-                                <span class="text-8xl opacity-50">🎴</span>
-                            </div>
-                        `}
-                        <!-- Badge de condición en la esquina -->
-                        <div class="absolute top-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded-full text-xs font-bold">
-                            ${card.condition || 'NM'}
-                        </div>
-                    </div>
-                    
-                    <!-- Información de la carta -->
-                    <div class="p-3 space-y-2">
-                        <h4 class="font-bold text-gray-900 dark:text-white text-center">
-                            ${card.name}
-                        </h4>
-                        
-                        <!-- Pills de información -->
-                        <div class="flex flex-wrap gap-1 justify-center">
-                            ${card.set ? `
-                                <span class="inline-block bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full text-xs">
-                                    ${card.set}
-                                </span>
-                            ` : ''}
-                            ${card.number ? `
-                                <span class="inline-block bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded-full text-xs">
-                                    #${card.number}
-                                </span>
-                            ` : ''}
-                            ${card.language ? `
-                                <span class="inline-block bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-1 rounded-full text-xs">
-                                    ${card.language}
-                                </span>
-                            ` : ''}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+    // Usar función compartida para generar cartas
+    const generateCardHTML = generateTradeCardHTML;
 
     modal.innerHTML = `
                 <div class="bg-white dark:bg-gray-800 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
@@ -3861,7 +3822,7 @@ window.viewProposalDetails = function (proposalId, tradeId) {
                                     <span class="text-2xl">📤</span>
                                     ${proposal.fromUserName} Ofrece
                                 </h3>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                <div class="${getTradeCardGridClass(proposal.offeredCards.length)}">
                                     ${generateCardHTML(proposal.offeredCards)}
                                 </div>
                             </div>
@@ -3883,7 +3844,7 @@ window.viewProposalDetails = function (proposalId, tradeId) {
                                     <span class="text-2xl">📥</span>
                                     ${proposal.fromUserName} Busca
                                 </h3>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                <div class="${getTradeCardGridClass(proposal.wantedCards.length)}">
                                     ${generateCardHTML(proposal.wantedCards)}
                                 </div>
                             </div>
@@ -4458,6 +4419,62 @@ window.showRatingHistory = function () {
     document.body.appendChild(modal);
 };
 
+// Función compartida para generar HTML de cartas en modales de intercambio/propuesta
+function generateTradeCardHTML(cards) {
+    return cards.map(card => `
+        <div class="group relative bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 border border-gray-200 dark:border-gray-700 w-44">
+            <!-- Imagen de la carta -->
+            <div class="relative bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-800 p-2">
+                ${card.image ? `
+                    <img src="${card.image}" alt="${card.name}" 
+                         class="w-full h-auto rounded-lg" loading="lazy">
+                ` : `
+                    <div class="w-full aspect-[3/4] flex items-center justify-center">
+                        <span class="text-6xl opacity-40">🎴</span>
+                    </div>
+                `}
+                <!-- Badge de condición -->
+                <div class="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-md"
+                     style="background-color: ${CARD_CONDITIONS[card.condition || 'NM']?.color || '#6b7280'}">
+                    ${CARD_CONDITIONS[card.condition || 'NM']?.icon || '✨'} ${card.condition || 'NM'}
+                </div>
+            </div>
+            
+            <!-- Info de la carta -->
+            <div class="px-3 py-2.5 space-y-1.5">
+                <h4 class="font-bold text-sm text-gray-900 dark:text-white text-center leading-tight line-clamp-2">
+                    ${card.name || 'Sin nombre'}
+                </h4>
+                
+                <!-- Pills compactas -->
+                <div class="flex flex-wrap gap-1 justify-center">
+                    ${card.set ? `
+                        <span class="inline-block bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded text-[10px] font-medium truncate max-w-[120px]">
+                            ${card.set}
+                        </span>
+                    ` : ''}
+                    ${card.number ? `
+                        <span class="inline-block bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                            #${card.number}
+                        </span>
+                    ` : ''}
+                </div>
+                <div class="flex justify-center">
+                    <span class="inline-block bg-green-50 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                        🌐 ${card.language || 'Español'}
+                    </span>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function getTradeCardGridClass(count) {
+    if (count === 1) return 'flex justify-center';
+    if (count === 2) return 'flex flex-wrap justify-center gap-5';
+    return 'flex flex-wrap justify-center gap-4';
+}
+
 function viewTradeDetails(tradeId) {
     console.log('👁️ Viendo detalles del intercambio:', tradeId);
 
@@ -4477,109 +4494,12 @@ function viewTradeDetails(tradeId) {
     const displayOffered = trade.finalOfferedCards || trade.offeredCards;
     const displayWanted = trade.finalWantedCards || trade.wantedCards;
 
-    // Generar HTML para las cartas ofrecidas con diseño mejorado
-    const offeredCardsHTML = displayOffered.map(card => `
-                <div class="group relative bg-gradient-to-b from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300">
-                    <!-- Imagen de la carta -->
-                    <div class="relative aspect-[3/4] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
-                        ${card.image ? `
-                            <img src="${card.image}" alt="${card.name}" 
-                                 class="w-full h-full object-contain p-2">
-                        ` : `
-                            <div class="w-full h-full flex items-center justify-center">
-                                <span class="text-8xl opacity-50">🎴</span>
-                            </div>
-                        `}
-                        <!-- Badge de condición en la esquina -->
-                        <div class="absolute top-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded-full text-xs font-bold">
-                            ${CARD_CONDITIONS[card.condition]?.icon || '✨'} ${card.condition || 'NM'}
-                        </div>
-                    </div>
-                    
-                    <!-- Información de la carta -->
-                    <div class="p-4 space-y-2">
-                        <h4 class="font-bold text-base text-gray-900 dark:text-white text-center line-clamp-2">
-                            ${card.name || 'Sin nombre'}
-                        </h4>
-                        
-                        <!-- Detalles en formato compacto -->
-                        <div class="flex flex-wrap gap-2 justify-center text-xs">
-                            ${card.set ? `
-                                <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full">
-                                    ${card.set}
-                                </span>
-                            ` : ''}
-                            ${card.number ? `
-                                <span class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-1 rounded-full">
-                                    #${card.number}
-                                </span>
-                            ` : ''}
-                            <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded-full">
-                                🌐 ${card.language || 'Español'}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+    // Usar función compartida para generar cartas
+    const offeredCardsHTML = generateTradeCardHTML(displayOffered);
+    const offeredGridClass = getTradeCardGridClass(displayOffered.length);
 
-    // Determinar el grid layout basado en el número de cartas ofrecidas
-    const offeredGridClass = displayOffered.length === 1
-        ? 'flex justify-center'
-        : displayOffered.length === 2
-            ? 'grid grid-cols-1 md:grid-cols-2 gap-4 justify-items-center'
-            : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center';
-
-    // Generar HTML para las cartas buscadas con el mismo diseño mejorado
-    const wantedCardsHTML = displayWanted.map(card => `
-                <div class="group relative bg-gradient-to-b from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300">
-                    <!-- Imagen de la carta -->
-                    <div class="relative aspect-[3/4] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
-                        ${card.image ? `
-                            <img src="${card.image}" alt="${card.name}" 
-                                 class="w-full h-full object-contain p-2">
-                        ` : `
-                            <div class="w-full h-full flex items-center justify-center">
-                                <span class="text-8xl opacity-50">🎴</span>
-                            </div>
-                        `}
-                        <!-- Badge de condición en la esquina -->
-                        <div class="absolute top-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded-full text-xs font-bold">
-                            ${CARD_CONDITIONS[card.condition]?.icon || '✨'} ${card.condition || 'NM'}
-                        </div>
-                    </div>
-                    
-                    <!-- Información de la carta -->
-                    <div class="p-4 space-y-2">
-                        <h4 class="font-bold text-base text-gray-900 dark:text-white text-center line-clamp-2">
-                            ${card.name || 'Sin nombre'}
-                        </h4>
-                        
-                        <!-- Detalles en formato compacto -->
-                        <div class="flex flex-wrap gap-2 justify-center text-xs">
-                            ${card.set ? `
-                                <span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full">
-                                    ${card.set}
-                                </span>
-                            ` : ''}
-                            ${card.number ? `
-                                <span class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-1 rounded-full">
-                                    #${card.number}
-                                </span>
-                            ` : ''}
-                            <span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded-full">
-                                🌐 ${card.language || 'Español'}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-
-    // Determinar el grid layout basado en el número de cartas buscadas
-    const wantedGridClass = displayWanted.length === 1
-        ? 'flex justify-center'
-        : displayWanted.length === 2
-            ? 'grid grid-cols-1 md:grid-cols-2 gap-4 justify-items-center'
-            : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center';
+    const wantedCardsHTML = generateTradeCardHTML(displayWanted);
+    const wantedGridClass = getTradeCardGridClass(displayWanted.length);
 
     modal.innerHTML = `
                 <div class="bg-white dark:bg-gray-900 rounded-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
