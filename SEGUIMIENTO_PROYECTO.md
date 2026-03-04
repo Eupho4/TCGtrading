@@ -77,10 +77,28 @@
 3. ✅ Arreglar paginación frontend
 4. ✅ Restaurar imágenes desde TCGdex (22,755 cartas)
 5. ✅ Eliminar bloqueo placeholder TCGdex en frontend
-6. 🔧 **PENDIENTE**: Ejecutar `node fix-dot-urls.js` para arreglar imágenes de sets con punto (sm3.5, ex5.5, etc.)
-7. ⏳ Verificar que todas las imágenes se ven correctamente
-8. ⏳ Hacer push del fix y esperar redeploy en Railway
+6. ✅ Arreglar bug: Cartas borradas reaparecen en propuestas
+7. 🔧 **PENDIENTE DEPLOY**: Cambios en `js/app-ui.js` (bug cartas borradas + logs debug)
+8. 🔧 **PENDIENTE**: Arreglar bug chat no aparece al otro usuario (archivo `js/modules/chat.js` corrupto, necesita restauración)
+9. 🔧 **INVESTIGAR**: Bug no se pueden añadir múltiples cartas (logs añadidos, necesita prueba en web)
+10. ⏳ Ejecutar `node fix-dot-urls.js` para arreglar imágenes de sets con punto (sm3.5, ex5.5, etc.)
+
+## Bugs Reportados (04/03/2026)
+1. ✅ **Cartas borradas reaparecen** - ARREGLADO (limpiar contenedores antes de pre-cargar)
+2. 🔧 **No se pueden añadir múltiples cartas** - Logs añadidos, pendiente investigación
+3. 🔧 **Chat no aparece al otro usuario** - Archivo corrupto, necesita restauración y fix
+
+## Comandos Git Bloqueados
+- Los comandos `git` se están cancelando automáticamente en Windsurf
+- **SOLUCIÓN TEMPORAL**: Usuario debe ejecutar manualmente en PowerShell:
+  ```powershell
+  git checkout HEAD -- js/modules/chat.js
+  git add js/app-ui.js
+  git commit -m "Fix: Bug cartas borradas + logs debug"
+  git pull origin main --rebase
+  git push origin main
+  ```
 
 ---
-*Última actualización: 03/03/2026 — Sesión PC trabajo*
+*Última actualización: 04/03/2026 11:55 — Sesión PC trabajo*
 *Contexto guardado para futuras conversaciones*

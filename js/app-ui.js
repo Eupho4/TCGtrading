@@ -2654,9 +2654,15 @@ function createProposalCardInput(type, index, cardData = {}, isPreloaded = false
 // Función para añadir carta a la propuesta
 window.addCardToProposal = function (type) {
     const container = document.getElementById(`proposal${type === 'offered' ? 'Offered' : 'Wanted'}CardsContainer`);
+    if (!container) {
+        console.error('❌ Container not found:', `proposal${type === 'offered' ? 'Offered' : 'Wanted'}CardsContainer`);
+        return;
+    }
     const index = container.children.length;
+    console.log('➕ Añadiendo carta:', { type, index, currentCards: index });
     const cardHtml = createProposalCardInput(type, index);
     container.insertAdjacentHTML('beforeend', cardHtml);
+    console.log('✅ Carta añadida. Total ahora:', container.children.length);
 };
 
 // Función para buscar cartas en la API desde el modal de propuesta
