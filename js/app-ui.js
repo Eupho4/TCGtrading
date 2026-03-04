@@ -2094,21 +2094,33 @@ function displayTrades(trades, containerId) {
         const escapedTitle = escapeForOnclick(trade.title);
         const escapedUserId = escapeForOnclick(trade.userId);
 
+        // Usar cartas finales si el intercambio fue completado con propuesta aceptada
+        const displayOffered = trade.finalOfferedCards || trade.offeredCards;
+        const displayWanted = trade.finalWantedCards || trade.wantedCards;
+        const isCompleted = trade.status === 'completed';
+        const hasProposals = trade.hasProposals || trade.proposalCount > 0;
+
         tradesHTML += `
-                    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600 hover:border-orange-300 dark:hover:border-orange-400 transition-colors">
+                    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border ${isCompleted ? 'border-green-300 dark:border-green-600' : hasProposals ? 'border-yellow-300 dark:border-yellow-600' : 'border-gray-200 dark:border-gray-600'} hover:border-orange-300 dark:hover:border-orange-400 transition-colors">
                         <div class="flex justify-between items-start mb-3">
                             <div>
                                 <h4 class="font-semibold text-gray-800 dark:text-white">${trade.title}</h4>
                                 <p class="text-sm text-gray-600 dark:text-gray-300">${trade.description}</p>
                             </div>
-                            <span class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-400">${formatDate(trade.createdAt)}</span>
+                            <div class="flex items-center gap-2">
+                                ${isCompleted ? '<span class="text-xs px-2 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full font-medium">✅ Completado</span>' : ''}
+                                ${hasProposals && !isCompleted ? `<span class="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded-full font-medium">📬 ${trade.proposalCount || ''} Propuesta(s)</span>` : ''}
+                                <span class="text-xs text-gray-500 dark:text-gray-400">${formatDate(trade.createdAt)}</span>
+                            </div>
                         </div>
+                        
+                        ${isCompleted && trade.finalOfferedCards ? '<div class="text-xs text-green-600 dark:text-green-400 mb-2 font-medium">📋 Cartas acordadas en la propuesta aceptada:</div>' : ''}
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
-                                <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📤 Ofrezco:</h5>
+                                <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📤 ${isCompleted && trade.finalOfferedCards ? 'Recibe:' : 'Ofrezco:'}</h5>
                                 <div class="space-y-2">
-                                    ${trade.offeredCards.map(card => `
+                                    ${displayOffered.map(card => `
                                         <div class="flex items-center justify-between bg-white dark:bg-gray-600 px-3 py-2 rounded border border-gray-200 dark:border-gray-500">
                                             <div class="flex items-center gap-2 flex-1">
                                                 ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded">` : ''}
@@ -2126,9 +2138,9 @@ function displayTrades(trades, containerId) {
                                 </div>
                             </div>
                             <div>
-                                <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📥 Busco:</h5>
+                                <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📥 ${isCompleted && trade.finalWantedCards ? 'Entrega:' : 'Busco:'}</h5>
                                 <div class="space-y-2">
-                                    ${trade.wantedCards.map(card => `
+                                    ${displayWanted.map(card => `
                                         <div class="flex items-center justify-between bg-white dark:bg-gray-600 px-3 py-2 rounded border border-gray-200 dark:border-gray-500">
                                             <div class="flex items-center gap-2 flex-1">
                                                 ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded">` : ''}
