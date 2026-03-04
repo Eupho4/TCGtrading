@@ -2366,7 +2366,15 @@ window.openTradeChat = async function (tradeId, otherUserId, tradeTitle) {
         // Inicializar o unirse al chat del intercambio
         // Extraer el ID real del intercambio (sin el prefijo trade_)
         const realTradeId = tradeId.replace(/^trade_/, '');
-        await window.chatManager.initializeTradeChat(chatId, realTradeId, tradeTitle || displayName, otherUserId);
+        // Obtener nombre del otro usuario si es posible
+        let otherUserName = 'Usuario';
+        if (trade) {
+            if (trade.userId !== currentUser.uid) {
+                otherUserName = trade.userName || trade.user || 'Usuario';
+            }
+        }
+        // initializeTradeChat(tradeId, otherUserId, otherUserName) - pasa realTradeId para evitar doble prefijo
+        await window.chatManager.initializeTradeChat(realTradeId, otherUserId, otherUserName);
 
         // Abrir ventana de chat
         await window.chatUI.openChat(chatId);
