@@ -512,10 +512,10 @@ class ChatUI {
         const badge = document.getElementById('unread-chats-badge');
         
         if (bar) {
-            // Mostrar la barra si hay CUALQUIER chat (minimizado o no)
-            const totalChats = this.activeChats.size + this.minimizedChats.size;
+            // SIEMPRE mostrar la barra si hay usuario autenticado
+            const isAuthenticated = this.chatManager && this.chatManager.auth && this.chatManager.auth.currentUser;
             
-            if (totalChats > 0) {
+            if (isAuthenticated) {
                 bar.classList.remove('hidden');
                 
                 // Contar chats con mensajes sin leer
