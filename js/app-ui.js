@@ -3094,7 +3094,10 @@ window.handleProposalSubmit = function (event, originalTradeId) {
         const ownerTrades = JSON.parse(localStorage.getItem(ownerKey) || '[]');
         const tradeIndex = ownerTrades.findIndex(t => t.id === originalTradeId);
         if (tradeIndex !== -1) {
-            ownerTrades[tradeIndex] = originalTradeData;
+            // Limpiar ownerKey antes de guardar (no debe filtrarse al trade)
+            const cleanTrade = { ...originalTradeData };
+            delete cleanTrade.ownerKey;
+            ownerTrades[tradeIndex] = cleanTrade;
             localStorage.setItem(ownerKey, JSON.stringify(ownerTrades));
         }
 
@@ -3659,8 +3662,7 @@ window.acceptProposal = function (proposalId, tradeId) {
         proponentNotifications.unshift(notification);
         localStorage.setItem(proponentNotificationsKey, JSON.stringify(proponentNotifications));
 
-        // Marcar el intercambio como completado
-        const allTrades = [];
+        // Marcar el intercambio como completado Y actualizar cartas con las de la propuesta
         const userKeys = Object.keys(localStorage).filter(key => key.startsWith('userTrades_'));
         userKeys.forEach(key => {
             const trades = JSON.parse(localStorage.getItem(key) || '[]');
@@ -3669,6 +3671,12 @@ window.acceptProposal = function (proposalId, tradeId) {
                 trades[tradeIndex].status = 'completed';
                 trades[tradeIndex].completedAt = new Date().toISOString();
                 trades[tradeIndex].completedWith = proposal.fromUserId;
+                // Actualizar las cartas del intercambio con las de la propuesta aceptada
+                trades[tradeIndex].finalOfferedCards = proposal.offeredCards;
+                trades[tradeIndex].finalWantedCards = proposal.wantedCards;
+                trades[tradeIndex].acceptedProposalId = proposalId;
+                // Limpiar ownerKey si se filtró
+                delete trades[tradeIndex].ownerKey;
                 localStorage.setItem(key, JSON.stringify(trades));
             }
         });
