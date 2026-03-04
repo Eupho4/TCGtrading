@@ -4,3 +4,7 @@ node_modules/
 dist/
 coverage/
 .vscode/
+migrate-local.js
+*.bat
+commit-current-fixes.bat
+restore-and-fix.bat
