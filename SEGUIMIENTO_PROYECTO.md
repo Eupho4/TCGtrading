@@ -16,7 +16,7 @@
 - **GitHub**: https://github.com/Eupho4/TCGtrading.git (rama `main`)
 - **API externa**: TCGdex API (https://api.tcgdex.net/v2)
 
-## Estado Actual (03/03/2026) — DEPLOYMENT EN RAILWAY FUNCIONANDO
+## Estado Actual (04/03/2026) — SISTEMA DE COLECCIÓN IMPLEMENTADO
 
 ### ✅ Lo que funciona:
 - **22,721 cartas** migradas a Railway PostgreSQL
@@ -25,16 +25,33 @@
 - **Paginación** funciona correctamente al cambiar de página
 - **Imágenes** se ven correctamente (WebP alta calidad desde TCGdex)
 - **Frontend** desplegado y funcionando en Railway
-- **server-hybrid.js** configurado para Railway (sin JOINs a tablas que no existían)
+- **server-simple.js** es el servidor en producción (Railway usa `npm start` → `server-simple.js`)
+- **Filtros de búsqueda** funcionando correctamente:
+  - ✅ Filtro por **set** (nombre exacto, no trae "Base Set 2" cuando filtras "Base Set")
+  - ✅ Filtro por **serie** (nombre exacto)
+  - ✅ Filtro por **tipo** (Grass, Fire, Water, etc. usando `ILIKE ANY(c.types)`)
+  - ✅ Filtro por **Trainer** (cartas sin HP y sin "Energy" en nombre)
+  - ✅ Filtro por **Energy** (cartas sin HP con "Energy" en nombre)
+  - ✅ Filtro por **rareza**
+  - ✅ Filtros funcionan **sin necesidad de escribir texto** en el buscador
+- **Sistema de colección personal**:
+  - ✅ Modal "Agregar por Set" funcional
+  - ✅ Carga todas las cartas del set seleccionado (usando `?setId=` exacto)
+  - ✅ Ordenación numérica de cartas (#1, #2, #3...)
+  - ✅ Selector de **condición** por carta (NM, EX, GD, PO)
+  - ✅ Selector de **cantidad** por carta (1-99)
+  - ✅ Checkboxes para selección masiva
+  - ✅ Guardado en Firebase Firestore (`users/{uid}/my_cards/{cardId}`)
+  - ✅ Modal se cierra correctamente después de agregar
 
-### 🔧 TAREA PENDIENTE — Arreglar imágenes rotas en sets con punto:
-- **Problema**: Sets con punto en el ID (ej: `sm3.5`, `ex5.5`, `sv03.5`, `sv04.5`, `sv06.5`, `me02.5`, `sv10.5b`, `sv10.5w`, `sm7.5`, `swsh3.5`, `swsh10.5`, `swsh12.5`) tienen URLs de imágenes que devuelven 404.
-- **Causa**: Las URLs de TCGdex usan el set ID sin punto en la ruta. Ej: `sm3.5` → la URL correcta es `.../sm35/...` no `.../sm3.5/...`
-- **Ejemplo**: `Shining Rayquaza` (sm3.5-56)
-  - ❌ URL actual: `https://assets.tcgdex.net/en/sm/sm3.5/56/high.webp` → 404
-  - ✅ URL correcta: `https://assets.tcgdex.net/en/sm/sm35/56/high.webp` → 200
-- **Script creado**: `fix-dot-urls.js` — listo para ejecutar, no se ha ejecutado todavía
-- **Acción**: Ejecutar `node fix-dot-urls.js` para arreglar todas las URLs de sets con punto
+### 🔧 TAREAS PENDIENTES:
+1. **Arreglar imágenes rotas en sets con punto** (sm3.5, ex5.5, etc.) — Script `fix-dot-urls.js` creado pero no ejecutado
+2. **Mostrar precios en la UI** — Los datos de Cardmarket/TCGPlayer ya están en la BD, solo falta mostrarlos
+3. **Sistema de intercambios** — Propuestas, contraoferta, aceptar/rechazar
+4. **Cardmarket API** — Actualización periódica de precios (requiere cuenta vendedor)
+5. **Campos "Para intercambio/venta"** en colección personal
+6. **Notificaciones** — Oferta recibida, trade completado
+7. **Perfil público** — Reputación, historial de trades
 
 ## Estructura de Base de Datos (Railway)
 - `cards` — 22,721 registros. Columnas: id, name, number, set_id, rarity_id, hp, types, subtypes, rules, images (JSONB), tcgplayer, cardmarket, legal, artist, flavor_text, national_pokedex_numbers, attacks, weaknesses, resistances, retreat_cost, converted_retreat_cost
@@ -56,14 +73,34 @@
 - `check-card.js` — Verificar una carta específica en BD
 
 ### Servidor:
-- `server-hybrid.js` — Servidor principal (Express + PostgreSQL). Usa `DATABASE_URL` del entorno. En Railway tiene SSL habilitado. Formatea cartas con info de sets desde cache.
+- `server-simple.js` — **Servidor en producción** (Railway). Express + PostgreSQL directo. Endpoints: `/api/pokemontcg/cards`, `/api/pokemontcg/sets`, `/api/tcgdex-image/*`
+- `server-hybrid.js` — Servidor alternativo con más features (no usado en producción actualmente)
 
 ### Backup:
 - `tcg_complete_backup_2026-02-19T14-19-35-633Z.json` — Backup completo de 22,721 cartas (NOTA: las imágenes en este JSON están vacías `{}`, se restauraron desde TCGdex API)
 
-## Archivos Clave Modificados (03/03/2026)
-- `server-hybrid.js` — Añadido código para arreglar URLs de imágenes TCGdex (añade `/high.webp`). Queries sin JOINs a sets/series para Railway.
-- `js/app-ui.js` — Eliminado bloqueo de URLs TCGdex que forzaba placeholder "En Proceso". Arreglado bug de paginación (`data.pagination?.total || data.totalCount`).
+## Archivos Clave Modificados (04/03/2026)
+
+### Backend (`server-simple.js`):
+- **Filtros arreglados** (commits: `08a9a5f`, `cdc0236`, `e52052d`):
+  - Añadido parámetro `setId` para match exacto por ID de set
+  - Filtro `set` y `series` usan `ILIKE` por nombre exacto (sin wildcards `%`)
+  - Filtro `type` usa `$N ILIKE ANY(c.types)` para arrays PostgreSQL
+  - Filtro `trainer`: `hp IS NULL AND NOT (name ILIKE '%Energy%')`
+  - Filtro `energy`: `hp IS NULL AND name ILIKE '%Energy%'`
+
+### Frontend (`js/app-ui.js`):
+- **Filtros** (commits: `4f4f71a`):
+  - `fetchCards('')` permite búsqueda vacía con solo filtros activos
+  - `buildCardsApiUrl` construye query string con todos los filtros
+- **Sistema de colección** (commits: `e52052d`, `77bd3f8`):
+  - `showBulkAddModal()` — Modal para agregar cartas por set completo
+  - `loadSetCards(setId)` — Usa `?setId=` en vez de `?q=set.id:`
+  - Ordenación numérica: `cards.sort((a,b) => parseInt(a.number) - parseInt(b.number))`
+  - Columna condición (NM/EX/GD/PO) en tabla de selección
+  - `addCardToCollection()` acepta parámetro `quantity` para agregar múltiples de una vez
+  - Modal con `id="bulkAddModal"` para cierre correcto
+  - Contador dinámico sin mostrar "(0)" inicial
 
 ## Configuración Railway
 - **DATABASE_URL**: configurada como variable de entorno en Railway
@@ -77,10 +114,19 @@
 3. ✅ Arreglar paginación frontend
 4. ✅ Restaurar imágenes desde TCGdex (22,755 cartas)
 5. ✅ Eliminar bloqueo placeholder TCGdex en frontend
-6. 🔧 **PENDIENTE**: Ejecutar `node fix-dot-urls.js` para arreglar imágenes de sets con punto (sm3.5, ex5.5, etc.)
-7. ⏳ Verificar que todas las imágenes se ven correctamente
-8. ⏳ Hacer push del fix y esperar redeploy en Railway
+6. ✅ Arreglar filtros de búsqueda (set, serie, tipo, trainer, energy, rareza)
+7. ✅ Implementar sistema de colección personal con Firebase
+8. ✅ Modal "Agregar por Set" con condición y cantidad
+9. 🔧 **PENDIENTE**: Ejecutar `node fix-dot-urls.js` para arreglar imágenes de sets con punto (sm3.5, ex5.5, etc.)
+10. 📋 **ROADMAP**:
+    - Mostrar precios Cardmarket/TCGPlayer en cards
+    - Sistema de intercambios (propuestas, contraoferta, aceptar/rechazar)
+    - Cardmarket API para actualización de precios
+    - Campos "Para intercambio/venta" en colección
+    - Sistema de notificaciones
+    - Perfil público con reputación
+    - Blockchain/tokens (THORChain o similar) — proyecto a largo plazo
 
 ---
-*Última actualización: 03/03/2026 — Sesión PC trabajo*
-*Contexto guardado para futuras conversaciones*
+*Última actualización: 04/03/2026 — Sistema de colección implementado*
+*Commits recientes: 77bd3f8 (bulk modal fixes), e52052d (collection system), cdc0236 (trainer/energy filters)*
