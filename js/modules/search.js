@@ -250,6 +250,15 @@ function createCardGridItem(card) {
     // Get offer count
     const offerCount = getCardOfferCount(card.name);
     
+    // Format prices
+    const formatPrice = (price) => {
+        if (!price || price === 0) return null;
+        return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(price);
+    };
+    
+    const cardmarketPrice = card.cardmarket?.prices?.averageSellPrice || card.cardmarket?.prices?.avg1 || null;
+    const tcgplayerPrice = card.tcgplayer?.prices?.normal?.market || card.tcgplayer?.prices?.holofoil?.market || null;
+    
     return `
         <div class="card-bg rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
             <div class="relative">
@@ -265,7 +274,7 @@ function createCardGridItem(card) {
             </div>
             <div class="p-4">
                 <h3 class="font-bold text-lg mb-2 text-gray-800 dark:text-white">${card.name}</h3>
-                <div class="flex justify-between items-center mb-3">
+                <div class="flex justify-between items-center mb-2">
                     <span class="text-sm text-gray-600 dark:text-gray-400">
                         #${cardNumber} • ${card.rarity || 'Common'}
                     </span>
@@ -276,6 +285,26 @@ function createCardGridItem(card) {
                         </button>
                     ` : ''}
                 </div>
+                ${(cardmarketPrice || tcgplayerPrice) ? `
+                    <div class="mb-3 space-y-1">
+                        ${cardmarketPrice ? `
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                    <span class="font-semibold">💳 Cardmarket:</span>
+                                </span>
+                                <span class="font-bold text-green-600 dark:text-green-400">${formatPrice(cardmarketPrice)}</span>
+                            </div>
+                        ` : ''}
+                        ${tcgplayerPrice ? `
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                    <span class="font-semibold">🎮 TCGPlayer:</span>
+                                </span>
+                                <span class="font-bold text-blue-600 dark:text-blue-400">$${tcgplayerPrice.toFixed(2)}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                ` : ''}
                 <button onclick="addCardDirectly('${card.id}', '${safeCardName}', '${safeImageUrl}', '${safeSetName}', '${safeSeries}', '${cardNumber}')"
                         class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors">
                     Añadir a Mi Colección
@@ -298,6 +327,15 @@ function createCardListItem(card) {
     // Get offer count
     const offerCount = getCardOfferCount(card.name);
     
+    // Format prices
+    const formatPrice = (price) => {
+        if (!price || price === 0) return null;
+        return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(price);
+    };
+    
+    const cardmarketPrice = card.cardmarket?.prices?.averageSellPrice || card.cardmarket?.prices?.avg1 || null;
+    const tcgplayerPrice = card.tcgplayer?.prices?.normal?.market || card.tcgplayer?.prices?.holofoil?.market || null;
+    
     return `
         <div class="card-bg rounded-lg shadow-lg p-4 flex gap-4 hover:shadow-xl transition-all duration-300">
             <img src="${card.images?.small || '/images/card-back.png'}" 
@@ -309,9 +347,25 @@ function createCardListItem(card) {
                 <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
                     Set: ${card.set?.name || 'Unknown'} • #${cardNumber}
                 </p>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
                     Rareza: ${card.rarity || 'Common'}
                 </p>
+                ${(cardmarketPrice || tcgplayerPrice) ? `
+                    <div class="mb-3 flex gap-3 text-sm">
+                        ${cardmarketPrice ? `
+                            <div class="flex items-center gap-1">
+                                <span class="text-gray-500 dark:text-gray-400">💳 Cardmarket:</span>
+                                <span class="font-bold text-green-600 dark:text-green-400">${formatPrice(cardmarketPrice)}</span>
+                            </div>
+                        ` : ''}
+                        ${tcgplayerPrice ? `
+                            <div class="flex items-center gap-1">
+                                <span class="text-gray-500 dark:text-gray-400">🎮 TCGPlayer:</span>
+                                <span class="font-bold text-blue-600 dark:text-blue-400">$${tcgplayerPrice.toFixed(2)}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                ` : ''}
                 <div class="flex gap-2">
                     <button onclick="addCardDirectly('${card.id}', '${safeCardName}', '${safeImageUrl}', '${safeSetName}', '${safeSeries}', '${cardNumber}')"
                             class="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors">

@@ -10639,6 +10639,14 @@ function renderCardsFromData(cards) {
             imgContainer.classList.add('hidden');
         });
 
+        // Format prices
+        const formatPrice = (price) => {
+            if (!price || price === 0) return null;
+            return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(price);
+        };
+        const cardmarketPrice = card.cardmarket?.prices?.averageSellPrice || card.cardmarket?.prices?.avg1 || null;
+        const tcgplayerPrice = card.tcgplayer?.prices?.normal?.market || card.tcgplayer?.prices?.holofoil?.market || null;
+
         const info = document.createElement('div');
         info.className = 'flex-1 min-w-0 pl-16';
         info.innerHTML = `
@@ -10646,6 +10654,12 @@ function renderCardsFromData(cards) {
                         <div class="truncate">
                             <div class="font-semibold text-gray-900 dark:text-white truncate">${card.name || 'Nombre no disponible'}</div>
                             <div class="text-xs text-gray-600 dark:text-gray-300 truncate">Set: ${card.set?.name || 'N/A'} · Serie: ${card.set?.series || 'N/A'} · Nº: ${card.number || 'N/A'}</div>
+                            ${(cardmarketPrice || tcgplayerPrice) ? `
+                                <div class="flex gap-3 text-xs mt-1">
+                                    ${cardmarketPrice ? `<span class="text-green-600 dark:text-green-400 font-semibold">💳 ${formatPrice(cardmarketPrice)}</span>` : ''}
+                                    ${tcgplayerPrice ? `<span class="text-blue-600 dark:text-blue-400 font-semibold">🎮 $${tcgplayerPrice.toFixed(2)}</span>` : ''}
+                                </div>
+                            ` : ''}
                         </div>
                         <div class="flex gap-2 items-center">
                             <button class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs"
