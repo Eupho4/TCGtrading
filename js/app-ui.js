@@ -3758,7 +3758,7 @@ window.viewProposalDetails = function (proposalId, tradeId) {
     const generateCardHTML = generateTradeCardHTML;
 
     modal.innerHTML = `
-                <div class="bg-white dark:bg-gray-800 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
+                <div class="bg-white dark:bg-gray-900 rounded-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
                     <!-- Header con gradiente -->
                     <div class="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
                         <div class="flex justify-between items-start">
@@ -3790,13 +3790,15 @@ window.viewProposalDetails = function (proposalId, tradeId) {
                     </div>
                     
                     <!-- Contenido scrolleable -->
-                    <div class="overflow-y-auto max-h-[calc(90vh-120px)] p-6">
-                        ${originalTrade ? `
-                            <!-- Intercambio Original -->
-                            <div class="mb-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                                <h3 class="font-bold text-gray-900 dark:text-white mb-3">
-                                    📦 Intercambio Original: ${originalTrade.title}
-                                </h3>
+                    <div class="overflow-y-auto max-h-[calc(90vh-120px)] bg-gray-50 dark:bg-gray-800">
+                        <div class="p-8">
+                            ${originalTrade ? `
+                                <!-- Intercambio Original -->
+                                <div class="mb-8 p-6 bg-white dark:bg-gray-900 rounded-xl shadow-sm">
+                                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                        <span class="text-2xl">📦</span>
+                                        Intercambio Original: ${originalTrade.title}
+                                    </h3>
                                 <div class="grid md:grid-cols-2 gap-4 text-sm">
                                     <div>
                                         <span class="font-semibold text-gray-700 dark:text-gray-300">Ofrece:</span>
@@ -3822,40 +3824,47 @@ window.viewProposalDetails = function (proposalId, tradeId) {
                             </div>
                         ` : ''}
                         
-                        <!-- Propuesta -->
-                        <div class="space-y-6">
+                        <!-- Propuesta con layout horizontal -->
+                        <div class="flex flex-col lg:flex-row items-start justify-center gap-8">
                             <!-- Cartas que ofrece el proponente -->
-                            <div>
-                                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                                    <span class="text-2xl">📤</span>
-                                    ${proposal.fromUserName} Ofrece
-                                </h3>
-                                <div class="${getTradeCardGridClass(proposal.offeredCards.length)}">
-                                    ${generateCardHTML(proposal.offeredCards)}
+                            <div class="flex-1 w-full">
+                                <div class="bg-white dark:bg-gray-900 rounded-xl p-6 shadow-sm">
+                                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                        <span class="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 p-2 rounded-lg">
+                                            📤
+                                        </span>
+                                        ${proposal.fromUserName} Ofrece
+                                    </h3>
+                                    <div class="${getTradeCardGridClass(proposal.offeredCards.length)} gap-4">
+                                        ${generateCardHTML(proposal.offeredCards)}
+                                    </div>
                                 </div>
                             </div>
                             
-                            <!-- Separador visual con flecha -->
-                            <div class="flex items-center justify-center py-4">
-                                <div class="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent"></div>
-                                <div class="mx-4 text-gray-400">
+                            <!-- Separador visual con icono de intercambio -->
+                            <div class="flex items-center justify-center lg:pt-20">
+                                <div class="bg-gradient-to-r from-purple-500 to-indigo-600 text-white p-4 rounded-full shadow-lg">
                                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
                                     </svg>
                                 </div>
-                                <div class="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent"></div>
                             </div>
                             
                             <!-- Cartas que busca el proponente -->
-                            <div>
-                                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                                    <span class="text-2xl">📥</span>
-                                    ${proposal.fromUserName} Busca
-                                </h3>
-                                <div class="${getTradeCardGridClass(proposal.wantedCards.length)}">
-                                    ${generateCardHTML(proposal.wantedCards)}
+                            <div class="flex-1 w-full">
+                                <div class="bg-white dark:bg-gray-900 rounded-xl p-6 shadow-sm">
+                                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                        <span class="bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400 p-2 rounded-lg">
+                                            📥
+                                        </span>
+                                        ${proposal.fromUserName} Busca
+                                    </h3>
+                                    <div class="${getTradeCardGridClass(proposal.wantedCards.length)} gap-4">
+                                        ${generateCardHTML(proposal.wantedCards)}
+                                    </div>
                                 </div>
                             </div>
+                        </div>
                             
                             ${proposal.message ? `
                                 <!-- Mensaje del proponente -->
