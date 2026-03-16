@@ -10644,8 +10644,8 @@ function renderCardsFromData(cards) {
             if (!price || price === 0) return null;
             return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(price);
         };
-        const cardmarketPrice = card.cardmarket?.prices?.averageSellPrice || card.cardmarket?.prices?.avg1 || null;
-        const tcgplayerPrice = card.tcgplayer?.prices?.normal?.market || card.tcgplayer?.prices?.holofoil?.market || null;
+        const cardmarketPrice = card.cardmarket?.avg30 || card.cardmarket?.avg1 || card.cardmarket?.avg || null;
+        const tcgplayerPrice = card.tcgplayer?.normal?.market || card.tcgplayer?.holofoil?.market || null;
 
         const info = document.createElement('div');
         info.className = 'flex-1 min-w-0 pl-16';
