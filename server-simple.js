@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { Pool } = require('pg');
+const rateLimit = require('express-rate-limit');
+const stripeService = require('./stripe-service');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,20 +14,547 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL
 });
 
-// Middleware
+// ── Middleware ────────────────────────────────────────────────────────────────
+// ── Stripe webhooks need the raw body; register BEFORE express.json()
+app.use('/api/stripe/webhooks', express.raw({ type: 'application/json' }));
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static('html'));
 app.use('/js', express.static('js'));
 app.use('/css', express.static('css'));
 
-// Health check
+// ── Rate limiting for payment/Stripe API routes ───────────────────────────────
+const stripeApiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,  // 15 minutes
+    max: 30,                    // Max 30 requests per IP per window
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: 'Too many requests. Please try again later.' }
+});
+
+// ── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
         database: 'connected'
     });
+});
+
+/**
+ * GET /api/config
+ * Returns public client-side configuration (safe values only – no secret keys).
+ */
+app.get('/api/config', (req, res) => {
+    res.json({
+        stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STRIPE CONNECT & PAYMENTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/stripe/connect/create-account
+ * Create a Stripe Express Connected account for a seller and return the
+ * onboarding URL.
+ *
+ * Body: { firebaseUid, email, country? }
+ */
+app.post('/api/stripe/connect/create-account', stripeApiLimiter, async (req, res) => {
+    try {
+        const { firebaseUid, email, country = 'ES', tradeId = '' } = req.body;
+        if (!firebaseUid || !email) {
+            return res.status(400).json({ success: false, error: 'firebaseUid and email are required' });
+        }
+
+        // Check if this user already has an account
+        const existing = await pool.query(
+            'SELECT stripe_account_id, account_status FROM user_stripe_accounts WHERE firebase_uid = $1',
+            [firebaseUid]
+        );
+
+        let stripeAccountId;
+
+        if (existing.rows.length > 0) {
+            stripeAccountId = existing.rows[0].stripe_account_id;
+        } else {
+            const account = await stripeService.createConnectAccount({ email, country, firebaseUid });
+            stripeAccountId = account.id;
+
+            await pool.query(
+                `INSERT INTO user_stripe_accounts
+                    (firebase_uid, stripe_account_id, account_status, country)
+                 VALUES ($1, $2, 'pending', $3)`,
+                [firebaseUid, stripeAccountId, country]
+            );
+        }
+
+        const onboardingUrl = await stripeService.createAccountLink(stripeAccountId, tradeId);
+        res.json({ success: true, onboardingUrl, stripeAccountId });
+
+    } catch (error) {
+        console.error('Error creating Connect account:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/stripe/connect/return
+ * Landing page after Stripe onboarding is completed / abandoned.
+ * Stripe redirects the browser here; we update DB and redirect to the app.
+ */
+app.get('/api/stripe/connect/return', stripeApiLimiter, async (req, res) => {
+    try {
+        const { account: stripeAccountId, trade = '' } = req.query;
+        if (!stripeAccountId) {
+            return res.redirect('/?stripe_error=missing_account');
+        }
+
+        const account = await stripeService.retrieveAccount(stripeAccountId);
+
+        await pool.query(
+            `UPDATE user_stripe_accounts
+                SET account_status    = $2,
+                    charges_enabled   = $3,
+                    payouts_enabled   = $4,
+                    details_submitted = $5,
+                    updated_at        = NOW()
+              WHERE stripe_account_id = $1`,
+            [
+                stripeAccountId,
+                account.charges_enabled ? 'active' : 'pending',
+                account.charges_enabled,
+                account.payouts_enabled,
+                account.details_submitted
+            ]
+        );
+
+        const redirectUrl = trade
+            ? `/?stripe_connected=1&trade=${trade}`
+            : '/?stripe_connected=1';
+
+        res.redirect(redirectUrl);
+
+    } catch (error) {
+        console.error('Error in Connect return:', error.message);
+        res.redirect('/?stripe_error=callback_failed');
+    }
+});
+
+/**
+ * GET /api/stripe/connect/refresh
+ * Called by Stripe when the onboarding link expires. Re-creates the link.
+ */
+app.get('/api/stripe/connect/refresh', stripeApiLimiter, async (req, res) => {
+    try {
+        const { account: stripeAccountId, trade = '' } = req.query;
+        if (!stripeAccountId) {
+            return res.redirect('/?stripe_error=missing_account');
+        }
+        const onboardingUrl = await stripeService.createAccountLink(stripeAccountId, trade);
+        res.redirect(onboardingUrl);
+    } catch (error) {
+        console.error('Error refreshing Connect link:', error.message);
+        res.redirect('/?stripe_error=refresh_failed');
+    }
+});
+
+/**
+ * GET /api/stripe/account-status
+ * Returns the current onboarding status for a user.
+ * Query: ?firebaseUid=xxx
+ */
+app.get('/api/stripe/account-status', stripeApiLimiter, async (req, res) => {
+    try {
+        const { firebaseUid } = req.query;
+        if (!firebaseUid) {
+            return res.status(400).json({ success: false, error: 'firebaseUid is required' });
+        }
+
+        const result = await pool.query(
+            `SELECT stripe_account_id, account_status, charges_enabled,
+                    payouts_enabled, details_submitted, country, currency
+               FROM user_stripe_accounts
+              WHERE firebase_uid = $1`,
+            [firebaseUid]
+        );
+
+        if (result.rows.length === 0) {
+            return res.json({ success: true, connected: false });
+        }
+
+        const row = result.rows[0];
+        res.json({
+            success: true,
+            connected: true,
+            accountId: row.stripe_account_id,
+            status: row.account_status,
+            chargesEnabled: row.charges_enabled,
+            payoutsEnabled: row.payouts_enabled,
+            detailsSubmitted: row.details_submitted
+        });
+
+    } catch (error) {
+        console.error('Error getting account status:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/stripe/connect/dashboard-link
+ * Returns a Stripe Express Dashboard URL for the seller.
+ *
+ * Body: { firebaseUid }
+ */
+app.post('/api/stripe/connect/dashboard-link', stripeApiLimiter, async (req, res) => {
+    try {
+        const { firebaseUid } = req.body;
+        if (!firebaseUid) {
+            return res.status(400).json({ success: false, error: 'firebaseUid is required' });
+        }
+
+        const result = await pool.query(
+            'SELECT stripe_account_id FROM user_stripe_accounts WHERE firebase_uid = $1',
+            [firebaseUid]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'No connected account found' });
+        }
+
+        const dashboardUrl = await stripeService.createDashboardLink(result.rows[0].stripe_account_id);
+        res.json({ success: true, dashboardUrl });
+
+    } catch (error) {
+        console.error('Error creating dashboard link:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ── Escrow Payments ────────────────────────────────────────────────────────
+
+/**
+ * POST /api/stripe/payment/create-intent
+ * Creates an escrow PaymentIntent (manual capture) for a trade.
+ *
+ * Body: {
+ *   tradeId, paymentType, grossAmountEur,
+ *   buyerFirebaseUid, buyerEmail,
+ *   sellerFirebaseUid
+ * }
+ */
+app.post('/api/stripe/payment/create-intent', stripeApiLimiter, async (req, res) => {
+    try {
+        const {
+            tradeId,
+            paymentType = 'trade_protection',
+            grossAmountEur = 0,
+            buyerFirebaseUid,
+            buyerEmail,
+            sellerFirebaseUid
+        } = req.body;
+
+        if (!tradeId || !buyerFirebaseUid || !sellerFirebaseUid) {
+            return res.status(400).json({ success: false, error: 'tradeId, buyerFirebaseUid and sellerFirebaseUid are required' });
+        }
+
+        // Look up seller's connected account
+        const sellerResult = await pool.query(
+            'SELECT stripe_account_id, charges_enabled FROM user_stripe_accounts WHERE firebase_uid = $1',
+            [sellerFirebaseUid]
+        );
+
+        const sellerStripeAccount = sellerResult.rows.length > 0 && sellerResult.rows[0].charges_enabled
+            ? sellerResult.rows[0].stripe_account_id
+            : null;
+
+        const { clientSecret, paymentIntentId, fees } = await stripeService.createEscrowPaymentIntent({
+            tradeId,
+            paymentType,
+            grossAmountEur,
+            sellerStripeAccount,
+            buyerEmail,
+            metadata: {
+                buyer_firebase_uid:  buyerFirebaseUid,
+                seller_firebase_uid: sellerFirebaseUid
+            }
+        });
+
+        // Persist to DB
+        await pool.query(
+            `INSERT INTO trade_payments
+                (trade_id, buyer_firebase_uid, seller_firebase_uid,
+                 seller_stripe_account, payment_type,
+                 gross_amount_cents, commission_cents, stripe_fee_cents, net_amount_cents,
+                 stripe_payment_intent, payment_status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending')
+             ON CONFLICT (trade_id) DO UPDATE
+                SET stripe_payment_intent = EXCLUDED.stripe_payment_intent,
+                    payment_status        = 'pending',
+                    updated_at            = NOW()`,
+            [
+                tradeId, buyerFirebaseUid, sellerFirebaseUid,
+                sellerStripeAccount, paymentType,
+                fees.grossCents, fees.commissionCents, fees.stripeFeeCents, fees.netCents,
+                paymentIntentId
+            ]
+        );
+
+        res.json({
+            success: true,
+            clientSecret,
+            paymentIntentId,
+            fees: {
+                grossEur:      (fees.grossCents / 100).toFixed(2),
+                commissionEur: (fees.commissionCents / 100).toFixed(2),
+                stripeFeeEur:  (fees.stripeFeeCents / 100).toFixed(2),
+                netEur:        (fees.netCents / 100).toFixed(2)
+            }
+        });
+
+    } catch (error) {
+        console.error('Error creating payment intent:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/stripe/payment/release
+ * Buyer confirms receipt → capture the escrowed funds.
+ *
+ * Body: { tradeId, buyerFirebaseUid }
+ */
+app.post('/api/stripe/payment/release', stripeApiLimiter, async (req, res) => {
+    try {
+        const { tradeId, buyerFirebaseUid } = req.body;
+        if (!tradeId || !buyerFirebaseUid) {
+            return res.status(400).json({ success: false, error: 'tradeId and buyerFirebaseUid are required' });
+        }
+
+        const result = await pool.query(
+            `SELECT stripe_payment_intent, payment_status, buyer_firebase_uid
+               FROM trade_payments WHERE trade_id = $1`,
+            [tradeId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Payment record not found' });
+        }
+
+        const payment = result.rows[0];
+
+        if (payment.buyer_firebase_uid !== buyerFirebaseUid) {
+            return res.status(403).json({ success: false, error: 'Unauthorized' });
+        }
+
+        if (payment.payment_status !== 'requires_capture') {
+            return res.status(400).json({
+                success: false,
+                error: `Cannot release funds in status: ${payment.payment_status}`
+            });
+        }
+
+        await stripeService.capturePaymentIntent(payment.stripe_payment_intent);
+
+        await pool.query(
+            `UPDATE trade_payments
+                SET payment_status = 'transferred', updated_at = NOW()
+              WHERE trade_id = $1`,
+            [tradeId]
+        );
+
+        res.json({ success: true, message: 'Funds released to seller' });
+
+    } catch (error) {
+        console.error('Error releasing payment:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/stripe/payment/refund
+ * Cancel or refund a trade payment (dispute / cancellation).
+ *
+ * Body: { tradeId, requesterFirebaseUid, reason? }
+ */
+app.post('/api/stripe/payment/refund', stripeApiLimiter, async (req, res) => {
+    try {
+        const {
+            tradeId,
+            requesterFirebaseUid,
+            reason = 'requested_by_customer'
+        } = req.body;
+
+        if (!tradeId || !requesterFirebaseUid) {
+            return res.status(400).json({ success: false, error: 'tradeId and requesterFirebaseUid are required' });
+        }
+
+        const result = await pool.query(
+            `SELECT stripe_payment_intent, payment_status, buyer_firebase_uid
+               FROM trade_payments WHERE trade_id = $1`,
+            [tradeId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Payment record not found' });
+        }
+
+        const payment = result.rows[0];
+
+        if (payment.buyer_firebase_uid !== requesterFirebaseUid) {
+            return res.status(403).json({ success: false, error: 'Unauthorized' });
+        }
+
+        const refundResult = await stripeService.refundPaymentIntent(
+            payment.stripe_payment_intent,
+            reason
+        );
+
+        const newStatus = refundResult.object === 'refund' ? 'refunded' : 'cancelled';
+
+        await pool.query(
+            `UPDATE trade_payments
+                SET payment_status  = $2,
+                    stripe_refund_id = $3,
+                    updated_at       = NOW()
+              WHERE trade_id = $1`,
+            [tradeId, newStatus, refundResult.id || null]
+        );
+
+        res.json({ success: true, status: newStatus });
+
+    } catch (error) {
+        console.error('Error processing refund:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/stripe/payment/tracking
+ * Seller provides a tracking number for a shipment.
+ *
+ * Body: { tradeId, sellerFirebaseUid, trackingNumber, carrier? }
+ */
+app.post('/api/stripe/payment/tracking', stripeApiLimiter, async (req, res) => {
+    try {
+        const { tradeId, sellerFirebaseUid, trackingNumber, carrier = '' } = req.body;
+
+        if (!tradeId || !sellerFirebaseUid || !trackingNumber) {
+            return res.status(400).json({ success: false, error: 'tradeId, sellerFirebaseUid and trackingNumber are required' });
+        }
+
+        const result = await pool.query(
+            'SELECT seller_firebase_uid, payment_status FROM trade_payments WHERE trade_id = $1',
+            [tradeId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Payment record not found' });
+        }
+
+        if (result.rows[0].seller_firebase_uid !== sellerFirebaseUid) {
+            return res.status(403).json({ success: false, error: 'Unauthorized' });
+        }
+
+        await pool.query(
+            `UPDATE trade_payments
+                SET tracking_number   = $2,
+                    tracking_carrier  = $3,
+                    payment_status    = 'requires_capture',
+                    updated_at        = NOW()
+              WHERE trade_id = $1`,
+            [tradeId, trackingNumber, carrier]
+        );
+
+        res.json({ success: true, message: 'Tracking information saved' });
+
+    } catch (error) {
+        console.error('Error saving tracking info:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/stripe/payment/status
+ * Returns the current payment status for a trade.
+ * Query: ?tradeId=xxx
+ */
+app.get('/api/stripe/payment/status', stripeApiLimiter, async (req, res) => {
+    try {
+        const { tradeId } = req.query;
+        if (!tradeId) {
+            return res.status(400).json({ success: false, error: 'tradeId is required' });
+        }
+
+        const result = await pool.query(
+            `SELECT payment_type, gross_amount_cents, commission_cents,
+                    stripe_fee_cents, net_amount_cents,
+                    payment_status, tracking_number, tracking_carrier,
+                    created_at, updated_at
+               FROM trade_payments WHERE trade_id = $1`,
+            [tradeId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.json({ success: true, payment: null });
+        }
+
+        const p = result.rows[0];
+        res.json({
+            success: true,
+            payment: {
+                paymentType:   p.payment_type,
+                grossEur:      (p.gross_amount_cents / 100).toFixed(2),
+                commissionEur: (p.commission_cents / 100).toFixed(2),
+                stripeFeeEur:  (p.stripe_fee_cents / 100).toFixed(2),
+                netEur:        (p.net_amount_cents / 100).toFixed(2),
+                status:        p.payment_status,
+                trackingNumber:p.tracking_number,
+                carrier:       p.tracking_carrier,
+                createdAt:     p.created_at,
+                updatedAt:     p.updated_at
+            }
+        });
+
+    } catch (error) {
+        console.error('Error getting payment status:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ── Stripe Webhooks ────────────────────────────────────────────────────────
+
+/**
+ * POST /api/stripe/webhooks
+ * Receives and processes Stripe webhook events.
+ * Body must be raw (registered before express.json() middleware above).
+ */
+app.post('/api/stripe/webhooks', async (req, res) => {
+    const signature = req.headers['stripe-signature'];
+
+    if (!signature) {
+        return res.status(400).json({ error: 'Missing Stripe-Signature header' });
+    }
+
+    let event;
+    try {
+        event = stripeService.constructWebhookEvent(req.body, signature);
+    } catch (err) {
+        console.error('Webhook signature verification failed:', err.message);
+        return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+    }
+
+    try {
+        const result = await stripeService.handleWebhookEvent(event, pool);
+        console.log(`Webhook ${event.type}: ${result.action}`);
+        res.json({ received: true, action: result.action });
+    } catch (err) {
+        console.error('Error handling webhook event:', err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Búsqueda de cartas - DIRECTO a PostgreSQL

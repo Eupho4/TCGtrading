@@ -1770,6 +1770,9 @@
                             <button id="profileRatingsTab" class="profile-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
                                 🏆 Valoraciones
                             </button>
+                            <button id="profilePaymentsTab" class="profile-tab py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium text-sm">
+                                💳 Pagos
+                            </button>
                         </nav>
                     </div>
                 </div>
@@ -2136,6 +2139,81 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Contenido de Pagos -->
+                <div id="profilePaymentsContent" class="profile-tab-content hidden">
+                    <div class="space-y-6">
+
+                        <!-- Stripe Connect banner -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                                <span class="mr-2">🏦</span> Cuenta Bancaria
+                            </h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                Conecta tu cuenta bancaria a través de Stripe para recibir el dinero de tus ventas e intercambios con protección de pago.
+                            </p>
+                            <!-- Rendered dynamically by payment-ui.js -->
+                            <div id="stripeConnectBanner"></div>
+                        </div>
+
+                        <!-- Commission information -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                                <span class="mr-2">💰</span> Comisiones y Tasas
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Trade protection -->
+                                <div class="rounded-xl border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 p-4">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-2xl">🛡️</span>
+                                        <span class="font-semibold text-blue-800 dark:text-blue-300">Protección de Intercambio</span>
+                                    </div>
+                                    <p class="text-3xl font-bold text-blue-700 dark:text-blue-400 mb-1">3,99 €</p>
+                                    <p class="text-sm text-blue-600 dark:text-blue-400">Tarifa fija por intercambio protegido. Los fondos se retienen en depósito hasta que el comprador confirma la recepción.</p>
+                                </div>
+                                <!-- Direct sale -->
+                                <div class="rounded-xl border border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 p-4">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-2xl">💳</span>
+                                        <span class="font-semibold text-purple-800 dark:text-purple-300">Venta Directa</span>
+                                    </div>
+                                    <p class="text-3xl font-bold text-purple-700 dark:text-purple-400 mb-1">7 %</p>
+                                    <p class="text-sm text-purple-600 dark:text-purple-400">Comisión sobre el precio de venta. Se descuenta automáticamente antes de transferirte el dinero.</p>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-4">
+                                * Las tasas de procesamiento de Stripe (~1,4 % + 0,25 €) se descuentan adicionalmente. Los precios incluyen IVA.
+                            </p>
+                        </div>
+
+                        <!-- Escrow explanation -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center">
+                                <span class="mr-2">🔒</span> ¿Cómo funciona el Depósito de Garantía?
+                            </h3>
+                            <ol class="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                                <li class="flex items-start gap-3">
+                                    <span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center justify-center">1</span>
+                                    <span><strong>Pago seguro:</strong> El comprador paga la tarifa de protección (3,99 €). Los fondos quedan retenidos en Stripe.</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center justify-center">2</span>
+                                    <span><strong>Envío:</strong> El vendedor envía las cartas y proporciona el número de seguimiento.</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center justify-center">3</span>
+                                    <span><strong>Confirmación:</strong> El comprador confirma la recepción. Los fondos se liberan automáticamente al vendedor.</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <span class="flex-shrink-0 w-6 h-6 rounded-full bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 font-bold text-xs flex items-center justify-center">⚠</span>
+                                    <span><strong>Disputa:</strong> Si hay un problema, el comprador puede abrir una disputa y el equipo de soporte revisará el caso.</span>
+                                </li>
+                            </ol>
+                        </div>
+
+                    </div>
+                </div>
+
             </div>
         </section>
     </main>

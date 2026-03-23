@@ -48,12 +48,29 @@ export const VIEW_MODES = {
     LIST: 'list'
 };
 
-// Trade status
+// Trade status (extended with payment/escrow lifecycle states)
 export const TRADE_STATUS = {
     ACTIVE: 'active',
-    COMPLETED: 'completed',
-    CANCELLED: 'cancelled',
-    PENDING: 'pending'
+    PENDING: 'pending',
+    IN_ESCROW: 'in_escrow',     // Funds held - awaiting shipment
+    IN_TRANSIT: 'in_transit',   // Tracking number provided
+    COMPLETED: 'completed',     // Buyer confirmed receipt / auto-released
+    DISPUTED: 'disputed',       // Buyer opened a dispute
+    CANCELLED: 'cancelled'
+};
+
+// Payment types
+export const PAYMENT_TYPES = {
+    TRADE_PROTECTION: 'trade_protection', // Fixed 3.99 € fee
+    DIRECT_SALE: 'direct_sale'            // 7 % commission on sale value
+};
+
+// Commission configuration
+export const COMMISSION = {
+    TRADE_PROTECTION_EUR: 3.99,  // Fixed protection fee in EUR
+    DIRECT_SALE_PERCENT: 0.07,   // 7 % of gross sale amount
+    STRIPE_PERCENT: 0.014,       // Stripe Connect: ~1.4% + 0.25 € (EU cards)
+    STRIPE_FIXED_EUR: 0.25       // Stripe fixed component
 };
 
 // Default pagination
