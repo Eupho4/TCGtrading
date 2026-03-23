@@ -812,9 +812,64 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'html', 'index.html'));
 });
 
+// ── Auto-migration: create payment tables if they don't exist ─────────────────
+async function initializePaymentTables() {
+    const client = await pool.connect();
+    try {
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS user_stripe_accounts (
+                id                SERIAL PRIMARY KEY,
+                firebase_uid      VARCHAR(128) NOT NULL UNIQUE,
+                stripe_account_id VARCHAR(64)  NOT NULL UNIQUE,
+                account_status    VARCHAR(32)  NOT NULL DEFAULT 'pending',
+                charges_enabled   BOOLEAN      NOT NULL DEFAULT FALSE,
+                payouts_enabled   BOOLEAN      NOT NULL DEFAULT FALSE,
+                details_submitted BOOLEAN      NOT NULL DEFAULT FALSE,
+                country           VARCHAR(2),
+                currency          VARCHAR(3),
+                created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        `);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS trade_payments (
+                id                    SERIAL PRIMARY KEY,
+                trade_id              VARCHAR(128) NOT NULL UNIQUE,
+                buyer_firebase_uid    VARCHAR(128) NOT NULL,
+                seller_firebase_uid   VARCHAR(128) NOT NULL,
+                seller_stripe_account VARCHAR(64),
+                payment_type          VARCHAR(16)  NOT NULL DEFAULT 'trade_protection',
+                gross_amount_cents    INTEGER      NOT NULL,
+                commission_cents      INTEGER      NOT NULL,
+                stripe_fee_cents      INTEGER      NOT NULL DEFAULT 0,
+                net_amount_cents      INTEGER      NOT NULL,
+                stripe_payment_intent VARCHAR(64),
+                stripe_transfer_id    VARCHAR(64),
+                stripe_refund_id      VARCHAR(64),
+                payment_status        VARCHAR(24)  NOT NULL DEFAULT 'pending',
+                tracking_number       VARCHAR(64),
+                tracking_carrier      VARCHAR(32),
+                notes                 TEXT,
+                created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        `);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_trade_id ON trade_payments (trade_id)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_buyer ON trade_payments (buyer_firebase_uid)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_seller ON trade_payments (seller_firebase_uid)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_status ON trade_payments (payment_status)`);
+        console.log('✅ Tablas de pagos listas');
+    } catch (err) {
+        console.error('❌ Error inicializando tablas de pagos:', err.message);
+    } finally {
+        client.release();
+    }
+}
+
 // Iniciar servidor
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🚀 Servidor TCGtrade iniciado en puerto ${PORT}`);
     console.log(`📊 Base de datos: PostgreSQL`);
     console.log(`🌐 http://localhost:${PORT}`);
+    await initializePaymentTables();
 });
