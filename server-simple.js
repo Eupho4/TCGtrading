@@ -128,6 +128,18 @@ app.post('/api/stripe/connect/create-account', stripeApiLimiter, async (req, res
             const account = await stripeService.createConnectAccount({ email, country, firebaseUid });
             stripeAccountId = account.id;
 
+            // Guard: reject if this Stripe account is already linked to a different user.
+            const conflict = await pool.query(
+                'SELECT firebase_uid FROM user_stripe_accounts WHERE stripe_account_id = $1',
+                [stripeAccountId]
+            );
+            if (conflict.rows.length > 0 && conflict.rows[0].firebase_uid !== firebaseUid) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'This Stripe account is already linked to a different user.'
+                });
+            }
+
             await pool.query(
                 `INSERT INTO user_stripe_accounts
                     (firebase_uid, stripe_account_id, account_status, country)
@@ -141,6 +153,14 @@ app.post('/api/stripe/connect/create-account', stripeApiLimiter, async (req, res
 
     } catch (error) {
         console.error('Error creating Connect account:', error.message);
+        // PostgreSQL unique-violation on stripe_account_id means this Stripe
+        // account was concurrently linked to a different user – treat as 409.
+        if (error.code === '23505' && error.constraint === 'user_stripe_accounts_stripe_account_id_key') {
+            return res.status(409).json({
+                success: false,
+                error: 'This Stripe account is already linked to a different user.'
+            });
+        }
         const { status, message, connectSetupRequired } = classifyStripeError(error);
         res.status(status).json({ success: false, error: message, connectSetupRequired: connectSetupRequired || false });
     }
@@ -910,6 +930,25 @@ async function initializePaymentTables() {
         await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_buyer ON trade_payments (buyer_firebase_uid)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_seller ON trade_payments (seller_firebase_uid)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_status ON trade_payments (payment_status)`);
+
+        // Ensure UNIQUE constraints exist on user_stripe_accounts even if the
+        // table was created before these constraints were part of the schema.
+        await client.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conrelid = 'user_stripe_accounts'::regclass
+                      AND contype  = 'u'
+                      AND conname  = 'user_stripe_accounts_stripe_account_id_key'
+                ) THEN
+                    ALTER TABLE user_stripe_accounts
+                        ADD CONSTRAINT user_stripe_accounts_stripe_account_id_key
+                        UNIQUE (stripe_account_id);
+                END IF;
+            END
+            $$
+        `);
         console.log('✅ Tablas de pagos listas');
     } catch (err) {
         console.error('❌ Error inicializando tablas de pagos:', err.message);
