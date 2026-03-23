@@ -10,6 +10,9 @@ import ChatManager from '/js/modules/chat.js?v=33';
 import ChatUI from '/js/modules/chat-ui.js?v=33';
 import { ChatDebugger } from '/js/modules/chat-debug.js?v=33';
 
+// Importar módulos de pagos
+import { renderConnectAccountBanner } from '/js/modules/payment-ui.js';
+
 // Verificar que las importaciones se cargaron correctamente
 console.log('🔍 Verificando importaciones de chat:', {
     ChatManager: typeof ChatManager,
@@ -360,6 +363,16 @@ function switchProfileTab(tabName) {
                 loadRatingsTab();
             }
             break;
+        case 'payments': {
+            targetContent = document.getElementById('profilePaymentsContent');
+            targetTab = document.getElementById('profilePaymentsTab');
+            // Render Stripe Connect banner when the tab is opened
+            const bannerEl = document.getElementById('stripeConnectBanner');
+            if (bannerEl && window.currentUser) {
+                renderConnectAccountBanner(bannerEl, window.currentUser);
+            }
+            break;
+        }
     }
 
     if (targetContent) {
@@ -7862,6 +7875,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const profileRatingsTab = document.getElementById('profileRatingsTab');
     if (profileRatingsTab) {
         profileRatingsTab.addEventListener('click', () => switchProfileTab('ratings'));
+    }
+
+    const profilePaymentsTab = document.getElementById('profilePaymentsTab');
+    if (profilePaymentsTab) {
+        profilePaymentsTab.addEventListener('click', () => switchProfileTab('payments'));
     }
 
     // Event listeners para tabs de ayuda
