@@ -83,6 +83,7 @@ export async function checkAccountStatus(firebaseUid) {
  * @param {string} [tradeId='']    – Optional, to return to the correct trade
  */
 export async function connectStripeAccount(firebaseUid, email, country = 'ES', tradeId = '') {
+    let notificationShown = false;
     try {
         const res = await fetch(`${API_BASE}/connect/create-account`, {
             method:  'POST',
@@ -91,14 +92,30 @@ export async function connectStripeAccount(firebaseUid, email, country = 'ES', t
         });
 
         const data = await res.json();
-        if (!data.success) throw new Error(data.error);
+        if (!data.success) {
+            if (data.connectSetupRequired) {
+                showNotification(
+                    'Stripe Connect no está activo en esta cuenta. ' +
+                    'El administrador debe activarlo en dashboard.stripe.com/connect.',
+                    'error'
+                );
+            } else {
+                showNotification(data.error || 'Error al conectar cuenta bancaria. Intenta de nuevo.', 'error');
+            }
+            notificationShown = true;
+            throw new Error(data.error);
+        }
 
         // Redirect to Stripe onboarding
         window.location.href = data.onboardingUrl;
 
     } catch (error) {
         console.error('Error starting Stripe Connect:', error);
-        showNotification('Error al conectar cuenta bancaria. Intenta de nuevo.', 'error');
+        // Only show a fallback notification when nothing has been shown yet
+        // (e.g. a network failure before we could read the server response).
+        if (!notificationShown) {
+            showNotification('Error de red al conectar cuenta bancaria. Intenta de nuevo.', 'error');
+        }
     }
 }
 

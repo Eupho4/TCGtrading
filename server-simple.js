@@ -6,6 +6,50 @@ const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const stripeService = require('./stripe-service');
 
+// ── Stripe error helper ───────────────────────────────────────────────────────
+/**
+ * Map a Stripe (or generic) error to an appropriate HTTP status code and a
+ * user-visible message.
+ *
+ * Stripe Connect not enabled  → 503  (service unavailable until configured)
+ * Invalid request / bad input → 400
+ * Auth / key problems         → 401
+ * Everything else             → 500
+ *
+ * @param {Error} error
+ * @returns {{ status: number, message: string }}
+ */
+function classifyStripeError(error) {
+    const msg = error.message || '';
+
+    // "You can only create new accounts if you've signed up for Connect"
+    // Stripe does not expose a dedicated error code for this, so we check the
+    // error type first (StripeInvalidRequestError) and then the message text.
+    if (
+        (error.type === 'StripeInvalidRequestError' || !error.type) &&
+        (msg.includes('signed up for Connect') || msg.includes('dashboard.stripe.com/connect'))
+    ) {
+        return {
+            status: 503,
+            message: 'Stripe Connect no está habilitado en esta cuenta. ' +
+                     'Actívalo en https://dashboard.stripe.com/connect y vuelve a intentarlo.',
+            connectSetupRequired: true
+        };
+    }
+
+    // Stripe API key not set or invalid
+    if (msg.includes('STRIPE_SECRET_KEY') || error.type === 'StripeAuthenticationError') {
+        return { status: 401, message: 'Stripe no está configurado correctamente en el servidor.' };
+    }
+
+    // Stripe invalid-request errors (bad parameters, etc.)
+    if (error.type === 'StripeInvalidRequestError') {
+        return { status: 400, message: msg };
+    }
+
+    return { status: 500, message: msg };
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -97,7 +141,8 @@ app.post('/api/stripe/connect/create-account', stripeApiLimiter, async (req, res
 
     } catch (error) {
         console.error('Error creating Connect account:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        const { status, message, connectSetupRequired } = classifyStripeError(error);
+        res.status(status).json({ success: false, error: message, connectSetupRequired: connectSetupRequired || false });
     }
 });
 
@@ -199,7 +244,8 @@ app.get('/api/stripe/account-status', stripeApiLimiter, async (req, res) => {
 
     } catch (error) {
         console.error('Error getting account status:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        const { status, message } = classifyStripeError(error);
+        res.status(status).json({ success: false, error: message });
     }
 });
 
@@ -230,7 +276,8 @@ app.post('/api/stripe/connect/dashboard-link', stripeApiLimiter, async (req, res
 
     } catch (error) {
         console.error('Error creating dashboard link:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        const { status, message } = classifyStripeError(error);
+        res.status(status).json({ success: false, error: message });
     }
 });
 
@@ -317,7 +364,8 @@ app.post('/api/stripe/payment/create-intent', stripeApiLimiter, async (req, res)
 
     } catch (error) {
         console.error('Error creating payment intent:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        const { status, message } = classifyStripeError(error);
+        res.status(status).json({ success: false, error: message });
     }
 });
 
@@ -370,7 +418,8 @@ app.post('/api/stripe/payment/release', stripeApiLimiter, async (req, res) => {
 
     } catch (error) {
         console.error('Error releasing payment:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        const { status, message } = classifyStripeError(error);
+        res.status(status).json({ success: false, error: message });
     }
 });
 
@@ -428,7 +477,8 @@ app.post('/api/stripe/payment/refund', stripeApiLimiter, async (req, res) => {
 
     } catch (error) {
         console.error('Error processing refund:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        const { status, message } = classifyStripeError(error);
+        res.status(status).json({ success: false, error: message });
     }
 });
 
@@ -473,7 +523,8 @@ app.post('/api/stripe/payment/tracking', stripeApiLimiter, async (req, res) => {
 
     } catch (error) {
         console.error('Error saving tracking info:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        const { status, message } = classifyStripeError(error);
+        res.status(status).json({ success: false, error: message });
     }
 });
 
@@ -521,7 +572,8 @@ app.get('/api/stripe/payment/status', stripeApiLimiter, async (req, res) => {
 
     } catch (error) {
         console.error('Error getting payment status:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        const { status, message } = classifyStripeError(error);
+        res.status(status).json({ success: false, error: message });
     }
 });
 
