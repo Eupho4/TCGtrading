@@ -6780,6 +6780,7 @@ async function loadMyCollection(userId) {
 
         if (showAll && selectedSetId) {
             // Mostrar todas las cartas del set (incluyendo faltantes)
+            // fetchAllCardsInSet ya devuelve datos completos de PostgreSQL (con precios)
             const allCardsInSet = await fetchAllCardsInSet(selectedSetId);
             const ownedCardIds = new Set(userCardsCache.map(card => card.id));
 
@@ -6790,7 +6791,10 @@ async function loadMyCollection(userId) {
                 if (matchesSeries && matchesLanguage) {
                     if (ownedCardIds.has(apiCard.id)) {
                         const ownedCard = userCardsCache.find(c => c.id === apiCard.id);
-                        cardsToDisplay.push({ ...ownedCard, isOwned: true });
+                        // Incluir precios del registro de PostgreSQL directamente
+                        const cmPrice = apiCard.cardmarket?.avg30 || apiCard.cardmarket?.avg1 || apiCard.cardmarket?.avg || null;
+                        const tcgPrice = apiCard.tcgplayer?.normal?.marketPrice || apiCard.tcgplayer?.holofoil?.marketPrice || null;
+                        cardsToDisplay.push({ ...ownedCard, isOwned: true, marketPrices: { cardmarket: cmPrice, tcgplayer: tcgPrice } });
                     } else {
                         cardsToDisplay.push({
                             id: apiCard.id,
@@ -6828,6 +6832,23 @@ async function loadMyCollection(userId) {
                 const numB = parseInt(b.number, 10) || Infinity;
                 return numA - numB;
             });
+
+            // Obtener precios de PostgreSQL en una sola petición batch
+            if (filteredCards.length > 0) {
+                try {
+                    const ids = filteredCards.map(c => c.id).join(',');
+                    const priceRes = await fetch(`/api/pokemontcg/cards/prices?ids=${encodeURIComponent(ids)}`);
+                    const priceData = await priceRes.json();
+                    if (priceData.success) {
+                        filteredCards = filteredCards.map(card => ({
+                            ...card,
+                            marketPrices: priceData.data[card.id] || { cardmarket: null, tcgplayer: null }
+                        }));
+                    }
+                } catch (e) {
+                    console.warn('No se pudieron obtener precios de mercado:', e);
+                }
+            }
 
             cardsToDisplay = filteredCards;
         }
@@ -6914,6 +6935,16 @@ function renderCardsInCollection(cards) {
                 ? `<span class="text-orange-600 dark:text-orange-400 font-semibold">💰 ${formatTradePrice(card.customPrice)}</span>`
                 : `<span class="text-gray-400 dark:text-gray-500 italic">Sin precio personal</span>`;
 
+            // Precios de mercado ya disponibles desde PostgreSQL (sin llamada extra)
+            const mp = card.marketPrices;
+            let marketPriceHtml = '<span class="text-gray-400 italic">Sin precio de mercado</span>';
+            if (mp && (mp.cardmarket || mp.tcgplayer)) {
+                const parts = [];
+                if (mp.cardmarket) parts.push(`<span class="text-green-600 dark:text-green-400 font-medium">💳 ${formatTradePrice(mp.cardmarket)}</span>`);
+                if (mp.tcgplayer) parts.push(`<span class="text-blue-600 dark:text-blue-400 font-medium">🎮 $${mp.tcgplayer.toFixed(2)}</span>`);
+                marketPriceHtml = parts.join('<span class="text-gray-400 mx-1">·</span>');
+            }
+
             info.innerHTML = `
                 <div class="flex items-start justify-between gap-2">
                     <div class="flex-1 min-w-0">
@@ -6927,9 +6958,7 @@ function renderCardsInCollection(cards) {
                         </div>
                         <div class="flex items-center gap-2 mt-0.5 flex-wrap text-xs">
                             <span class="text-gray-500 dark:text-gray-400">Mercado:</span>
-                            <span data-market-price data-card-id="${card.id}" data-card-name="${card.name}" class="text-xs">
-                                <span class="text-gray-400 italic">cargando…</span>
-                            </span>
+                            ${marketPriceHtml}
                         </div>
                         <div class="flex items-center gap-2 mt-0.5 text-xs">
                             <span class="text-gray-500 dark:text-gray-400">Personal:</span>
@@ -6965,9 +6994,6 @@ function renderCardsInCollection(cards) {
         row.appendChild(info);
         myCardsContainer.appendChild(row);
     });
-
-    // Load market prices asynchronously
-    loadCollectionMarketPrices(myCardsContainer);
 }
 
 // Función para eliminar carta de la colección
@@ -10784,6 +10810,19 @@ async function loadUserCollection() {
                         </div>
                     `;
         } else {
+            // Obtener precios de PostgreSQL en una sola petición batch
+            try {
+                const ids = cards.map(c => c.id).join(',');
+                const priceRes = await fetch(`/api/pokemontcg/cards/prices?ids=${encodeURIComponent(ids)}`);
+                const priceData = await priceRes.json();
+                if (priceData.success) {
+                    cards.forEach(card => {
+                        card.marketPrices = priceData.data[card.id] || { cardmarket: null, tcgplayer: null };
+                    });
+                }
+            } catch (e) {
+                console.warn('No se pudieron obtener precios de mercado:', e);
+            }
             renderMyCards(cards);
         }
         if (status) status.textContent = '';
@@ -10860,6 +10899,16 @@ function renderMyCards(cards) {
             ? `<span class="text-orange-600 dark:text-orange-400 font-semibold">💰 ${formatTradePrice(card.customPrice)}</span>`
             : `<span class="text-gray-400 dark:text-gray-500 italic">Sin precio personal</span>`;
 
+        // Precios de mercado ya disponibles desde PostgreSQL (sin llamada extra)
+        const mp = card.marketPrices;
+        let marketPriceHtml = '<span class="text-gray-400 italic">Sin precio de mercado</span>';
+        if (mp && (mp.cardmarket || mp.tcgplayer)) {
+            const parts = [];
+            if (mp.cardmarket) parts.push(`<span class="text-green-600 dark:text-green-400 font-medium">💳 ${formatTradePrice(mp.cardmarket)}</span>`);
+            if (mp.tcgplayer) parts.push(`<span class="text-blue-600 dark:text-blue-400 font-medium">🎮 $${mp.tcgplayer.toFixed(2)}</span>`);
+            marketPriceHtml = parts.join('<span class="text-gray-400 mx-1">·</span>');
+        }
+
         info.innerHTML = `
             <div class="flex items-start justify-between gap-2">
                 <div class="flex-1 min-w-0">
@@ -10872,9 +10921,7 @@ function renderMyCards(cards) {
                     </div>
                     <div class="flex items-center gap-2 mt-0.5 flex-wrap text-xs">
                         <span class="text-gray-500 dark:text-gray-400">Mercado:</span>
-                        <span data-market-price data-card-id="${cardId}" data-card-name="${name}" class="text-xs">
-                            <span class="text-gray-400 italic">cargando…</span>
-                        </span>
+                        ${marketPriceHtml}
                     </div>
                     <div class="flex items-center gap-2 mt-0.5 text-xs">
                         <span class="text-gray-500 dark:text-gray-400">Personal:</span>
@@ -10894,9 +10941,6 @@ function renderMyCards(cards) {
         row.appendChild(info);
         container.appendChild(row);
     });
-
-    // Load market prices asynchronously
-    loadCollectionMarketPrices(container);
 }
 
 // Estado de filtros de búsqueda
