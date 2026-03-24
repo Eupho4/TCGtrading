@@ -2,7 +2,7 @@
 // Deploy forzado: 2024-01-16 - Correcciones completas de modo oscuro aplicadas
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
 import { getDatabase } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
 // Importar módulos de chat
@@ -75,6 +75,270 @@ setTimeout(() => {
 let currentUser = null;
 let allSets = []; // Cache para todos los sets de la API
 let userCardsCache = []; // Cache para las cartas del usuario
+
+// Cache de precios para cartas en intercambios
+const tradePriceCache = new Map();
+
+// Obtener precio de una carta por ID o nombre
+async function fetchCardPrice(cardId, cardName) {
+    const cacheKey = cardId || cardName;
+    if (!cacheKey) return null;
+    if (tradePriceCache.has(cacheKey)) return tradePriceCache.get(cacheKey);
+    try {
+        const query = cardId || cardName;
+        const response = await fetch(`/api/pokemontcg/cards?q=${encodeURIComponent(query)}&pageSize=5`);
+        const data = await response.json();
+        let card = null;
+        if (data.data && data.data.length > 0) {
+            card = cardId ? (data.data.find(c => c.id === cardId) || data.data[0]) : data.data[0];
+        }
+        let prices = null;
+        if (card) {
+            const cmPrice = card.cardmarket?.prices?.averageSellPrice || card.cardmarket?.prices?.avg1 || null;
+            const tcgPrice = card.tcgplayer?.prices?.normal?.market || card.tcgplayer?.prices?.holofoil?.market || null;
+            if (cmPrice !== null || tcgPrice !== null) {
+                prices = { cardmarket: cmPrice, tcgplayer: tcgPrice };
+            }
+        }
+        tradePriceCache.set(cacheKey, prices);
+        return prices;
+    } catch (e) {
+        console.warn('No se pudo obtener precio para carta:', cardId || cardName);
+        tradePriceCache.set(cacheKey, null);
+        return null;
+    }
+}
+
+// Formatear precio en euros
+function formatTradePrice(price) {
+    return new Intl.NumberFormat('es-ES', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(price);
+}
+
+// Cargar precios para todos los elementos [data-card-price] dentro de un contenedor
+async function loadTradeCardPrices(container) {
+    const priceElements = container.querySelectorAll('[data-card-price]');
+    if (priceElements.length === 0) return;
+    const fetchPromises = Array.from(priceElements).map(async (el) => {
+        const cardId = el.dataset.cardId;
+        const cardName = el.dataset.cardName;
+        const prices = await fetchCardPrice(cardId, cardName);
+        if (prices && (prices.cardmarket || prices.tcgplayer)) {
+            el.innerHTML = `
+                <div class="flex flex-col gap-0.5 mt-1">
+                    ${prices.cardmarket ? `<span class="text-[10px] font-medium text-green-600 dark:text-green-400">💳 ${formatTradePrice(prices.cardmarket)}</span>` : ''}
+                    ${prices.tcgplayer ? `<span class="text-[10px] font-medium text-blue-600 dark:text-blue-400">🎮 $${prices.tcgplayer.toFixed(2)}</span>` : ''}
+                </div>`;
+        } else {
+            el.innerHTML = '';
+        }
+    });
+    await Promise.all(fetchPromises);
+}
+
+// Load market prices for [data-market-price] elements in the collection view
+async function loadCollectionMarketPrices(container) {
+    const priceElements = container.querySelectorAll('[data-market-price]');
+    if (priceElements.length === 0) return;
+    const fetchPromises = Array.from(priceElements).map(async (el) => {
+        const cardId = el.dataset.cardId;
+        const cardName = el.dataset.cardName;
+        const prices = await fetchCardPrice(cardId, cardName);
+        if (prices && (prices.cardmarket || prices.tcgplayer)) {
+            const parts = [];
+            if (prices.cardmarket) parts.push(`<span class="text-green-600 dark:text-green-400 font-medium">💳 ${formatTradePrice(prices.cardmarket)}</span>`);
+            if (prices.tcgplayer) parts.push(`<span class="text-blue-600 dark:text-blue-400 font-medium">🎮 $${prices.tcgplayer.toFixed(2)}</span>`);
+            el.innerHTML = parts.join('<span class="text-gray-400 mx-1">·</span>');
+        } else {
+            el.innerHTML = '<span class="text-gray-400 italic">Sin precio de mercado</span>';
+        }
+    });
+    await Promise.all(fetchPromises);
+}
+
+// ── Balance / diferencia de valor del intercambio ───────────────────────────
+
+// Resolves the best available EUR price for a single trade card
+async function resolveCardPrice(card) {
+    if (card.customPrice != null) return card.customPrice;
+    const prices = await fetchCardPrice(card.id, card.name);
+    return prices?.cardmarket ?? null;
+}
+
+// Calculates and renders the trade value balance into a given DOM element.
+// offeredCards: cards the trade owner offers
+// wantedCards:  cards the trade owner wants
+async function renderTradeBalance(balanceEl, offeredCards, wantedCards) {
+    if (!balanceEl) return;
+
+    const offered = offeredCards || [];
+    const wanted  = wantedCards  || [];
+
+    const [offeredPrices, wantedPrices] = await Promise.all([
+        Promise.all(offered.map(resolveCardPrice)),
+        Promise.all(wanted.map(resolveCardPrice))
+    ]);
+
+    const offeredKnown = offeredPrices.filter(p => p !== null);
+    const wantedKnown  = wantedPrices.filter(p => p !== null);
+
+    if (offeredKnown.length === 0 && wantedKnown.length === 0) {
+        balanceEl.innerHTML = '<p class="text-xs text-gray-400 italic text-center">Sin precios disponibles para calcular el balance</p>';
+        return;
+    }
+
+    // Work in cents to avoid floating-point precision issues
+    const offeredCents = offeredKnown.reduce((a, b) => a + Math.round(b * 100), 0);
+    const wantedCents  = wantedKnown.reduce((a, b) => a + Math.round(b * 100), 0);
+    const diffCents    = offeredCents - wantedCents;
+    // Convert back to EUR for display
+    const offeredTotal = offeredCents / 100;
+    const wantedTotal  = wantedCents  / 100;
+    const diff         = diffCents    / 100;
+    const hasPartialPrices = offeredKnown.length < offered.length || wantedKnown.length < wanted.length;
+
+    let icon, diffLabel, colorClass;
+    if (diffCents === 0) {
+        icon = '⚖️';
+        diffLabel = 'Intercambio equilibrado';
+        colorClass = 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-800 dark:text-green-200';
+    } else if (diffCents > 0) {
+        // Offered side is worth more → person wanting the cards should add cash
+        icon = '📤';
+        diffLabel = `Quien solicita las cartas debería compensar con <strong>${formatTradePrice(diff)}</strong>`;
+        colorClass = 'bg-orange-50 dark:bg-orange-900/20 border-orange-300 dark:border-orange-700 text-orange-800 dark:text-orange-200';
+    } else {
+        // Wanted side is worth more → person offering should add cash
+        icon = '📥';
+        diffLabel = `Quien ofrece las cartas debería compensar con <strong>${formatTradePrice(Math.abs(diff))}</strong>`;
+        colorClass = 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-200';
+    }
+
+    balanceEl.innerHTML = `
+        <div class="flex flex-wrap items-center gap-3 px-4 py-3 rounded-lg border text-sm font-medium ${colorClass}">
+            <span class="text-base">${icon}</span>
+            <span>${diffLabel}</span>
+            <span class="ml-auto flex gap-3 text-xs opacity-80 font-normal">
+                <span>📤 Ofrecido: <strong>${formatTradePrice(offeredTotal)}</strong></span>
+                <span>📥 Buscado: <strong>${formatTradePrice(wantedTotal)}</strong></span>
+            </span>
+            ${hasPartialPrices ? '<span class="text-xs opacity-60 w-full">(algunos precios no disponibles — balance estimado)</span>' : ''}
+        </div>
+    `;
+}
+
+// ── Precio personalizado por carta ──────────────────────────────────────────
+
+// Guardar/actualizar el precio personal de una carta en Firestore y caché
+window.updateCardCustomPrice = async function(cardId, price) {
+    if (!currentUser) return;
+    try {
+        const cardRef = doc(db, 'users', currentUser.uid, 'my_cards', cardId);
+        const priceValue = price !== '' && price !== null && !isNaN(parseFloat(price))
+            ? parseFloat(parseFloat(price).toFixed(2))
+            : null;
+        await setDoc(cardRef, { customPrice: priceValue }, { merge: true });
+        // Update cache
+        const cached = userCardsCache.find(c => c.id === cardId);
+        if (cached) cached.customPrice = priceValue;
+        showNotification(priceValue !== null ? `Precio personal actualizado: ${formatTradePrice(priceValue)}` : 'Precio personal eliminado', 'success', 3000);
+        return priceValue;
+    } catch (e) {
+        console.error('Error al actualizar precio:', e);
+        showNotification('Error al guardar el precio', 'error', 3000);
+        return null;
+    }
+};
+
+// Mostrar modal para editar el precio personal de una carta
+window.showEditCustomPriceModal = function(cardId, cardName, currentPrice) {
+    const existing = document.getElementById('editCustomPriceModal');
+    if (existing) existing.remove();
+
+    const formattedCurrent = currentPrice != null ? parseFloat(currentPrice).toFixed(2) : '';
+
+    const modal = document.createElement('div');
+    modal.id = 'editCustomPriceModal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+    modal.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">💰 Precio Personal</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">${cardName}</p>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Precio (€)</label>
+            <input id="customPriceInput" type="number" min="0" step="0.01"
+                   value="${formattedCurrent}"
+                   placeholder="Ej: 4.50"
+                   class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-400 mb-4">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Este precio aparecerá en tu colección y tendrá preferencia en los intercambios.</p>
+            <div class="flex gap-2 justify-end">
+                <button onclick="document.getElementById('editCustomPriceModal').remove()"
+                        class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg text-sm">
+                    Cancelar
+                </button>
+                ${currentPrice != null ? `
+                <button onclick="window._saveCustomPrice('${cardId}', '')"
+                        class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm">
+                    Quitar precio
+                </button>` : ''}
+                <button onclick="window._saveCustomPrice('${cardId}', document.getElementById('customPriceInput').value)"
+                        class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-semibold">
+                    Guardar
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    setTimeout(() => document.getElementById('customPriceInput')?.focus(), 50);
+};
+
+// Helper: save and refresh collection
+window._saveCustomPrice = async function(cardId, priceStr) {
+    const modal = document.getElementById('editCustomPriceModal');
+    if (modal) modal.remove();
+    await window.updateCardCustomPrice(cardId, priceStr);
+    // Re-render collection if visible
+    if (currentUser) {
+        if (typeof loadMyCollection === 'function' && document.getElementById('myCardsContainer')) {
+            loadMyCollection(currentUser.uid);
+        }
+        if (document.getElementById('myCardsGrid')) {
+            renderMyCards(userCardsCache);
+        }
+    }
+};
+
+// Seleccionar carta de la colección del usuario para un intercambio (mantiene condición/idioma)
+window.selectCollectionCardForTrade = function(type, cardIndex, cardId, cardName, cardImage, setName, cardNumber, language, condition) {
+    const containerId = type === 'offered' ? 'offeredCardsContainer' : 'wantedCardsContainer';
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const cardElement = container.querySelectorAll('.trade-card')[cardIndex];
+    if (cardElement) {
+        const conditionSelect = cardElement.querySelector(`select[name="${type}_condition_${cardIndex}"]`);
+        if (conditionSelect) conditionSelect.value = condition || 'NM';
+        const languageSelect = cardElement.querySelector(`select[name="${type}_language_${cardIndex}"]`);
+        if (languageSelect) {
+            for (let i = 0; i < languageSelect.options.length; i++) {
+                if (languageSelect.options[i].value === language) {
+                    languageSelect.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        const fromMyCardsInput = cardElement.querySelector(`input[name="${type}_fromMyCards_${cardIndex}"]`);
+        if (fromMyCardsInput) fromMyCardsInput.value = 'true';
+        // Propagate customPrice from collection cache
+        const cachedCard = userCardsCache.find(c => c.id === cardId);
+        const customPriceInput = cardElement.querySelector(`input[name="${type}_customPrice_${cardIndex}"]`);
+        if (customPriceInput) customPriceInput.value = (cachedCard?.customPrice != null) ? cachedCard.customPrice : '';
+    }
+    selectCardForTrade(type, cardIndex, cardId, cardName, cardImage, setName, cardNumber, true);
+};
 
 // Variables para migración y sincronización
 let dataMigration = null;
@@ -1180,6 +1444,61 @@ window.searchCardForTrade = async function (input, type, cardIndex) {
             `;
     resultsContainer.classList.remove('hidden');
 
+    // Para cartas ofrecidas, buscar solo en la colección del usuario
+    if (type === 'offered') {
+        // Cargar colección si no está en caché
+        if (!userCardsCache || userCardsCache.length === 0) {
+            if (!currentUser) {
+                resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">Inicia sesión para buscar en tu colección</div>`;
+                return;
+            }
+            try {
+                const myCardsCollectionRef = collection(db, `users/${currentUser.uid}/my_cards`);
+                const querySnapshot = await getDocs(myCardsCollectionRef);
+                userCardsCache = [];
+                querySnapshot.forEach(doc => {
+                    userCardsCache.push({ id: doc.id, ...doc.data() });
+                });
+            } catch (error) {
+                console.error('Error cargando cartas:', error);
+                resultsContainer.innerHTML = `<div class="p-3 text-center text-red-500">Error al cargar tu colección</div>`;
+                setTimeout(() => resultsContainer.classList.add('hidden'), 3000);
+                return;
+            }
+        }
+
+        if (userCardsCache.length === 0) {
+            resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">No tienes cartas en tu colección. Añade cartas primero.</div>`;
+            return;
+        }
+
+        // Filtrar colección por la búsqueda
+        const queryLower = query.toLowerCase();
+        const matchingCards = userCardsCache.filter(card =>
+            (card.name || '').toLowerCase().includes(queryLower) ||
+            (card.set || '').toLowerCase().includes(queryLower)
+        ).slice(0, 10);
+
+        const escapeForOnclick = (str) => String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+
+        if (matchingCards.length > 0) {
+            resultsContainer.innerHTML = matchingCards.map(card => `
+                <div class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex items-center gap-2 border-b border-gray-200 dark:border-gray-600 last:border-0"
+                     onclick="selectCollectionCardForTrade('${type}', ${cardIndex}, '${escapeForOnclick(card.id)}', '${escapeForOnclick(card.name)}', '${escapeForOnclick(card.imageUrl || '')}', '${escapeForOnclick(card.set || '')}', '${escapeForOnclick(card.number || '')}', '${escapeForOnclick(card.language || 'Español')}', '${escapeForOnclick(card.condition || 'NM')}')">
+                    ${card.imageUrl ? `<img src="${card.imageUrl}" alt="${card.name}" class="w-10 h-14 object-contain rounded">` : '<div class="w-10 h-14 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded"><span>🎴</span></div>'}
+                    <div class="flex-1">
+                        <div class="font-medium text-sm text-gray-900 dark:text-white">${card.name || 'Sin nombre'}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">${card.set || 'Set desconocido'} • #${card.number || 'N/A'} • ${CARD_CONDITIONS[card.condition]?.icon || ''} ${card.condition || 'NM'} • ${card.language || 'Español'}</div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">No tienes esta carta en tu colección</div>`;
+        }
+        return;
+    }
+
+    // Para cartas buscadas, buscar en la API completa
     // Debounce de 300ms
     searchTimeout = setTimeout(async () => {
         try {
@@ -2135,11 +2454,17 @@ function displayTrades(trades, containerId) {
                                 <div class="space-y-2">
                                     ${displayOffered.map(card => `
                                         <div class="flex items-center justify-between bg-white dark:bg-gray-600 px-3 py-2 rounded border border-gray-200 dark:border-gray-500">
-                                            <div class="flex items-center gap-2 flex-1">
-                                                ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded">` : ''}
-                                                <span class="text-sm text-gray-700 dark:text-gray-200">${card.name || card}</span>
+                                            <div class="flex items-center gap-2 flex-1 min-w-0">
+                                                ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded flex-shrink-0">` : ''}
+                                                <div class="flex-1 min-w-0">
+                                                    <span class="text-sm text-gray-700 dark:text-gray-200 block truncate">${card.name || card}</span>
+                                                    ${card.customPrice != null
+                                                        ? `<span class="text-[10px] font-semibold text-orange-600 dark:text-orange-400">💰 ${formatTradePrice(card.customPrice)}</span>`
+                                                        : `<div data-card-price data-card-id="${card.id || ''}" data-card-name="${card.name || ''}"></div>`
+                                                    }
+                                                </div>
                                             </div>
-                                            <div class="flex items-center space-x-2">
+                                            <div class="flex items-center space-x-2 flex-shrink-0">
                                                 <span class="text-xs px-2 py-1 rounded-full text-white font-medium" 
                                                       style="background-color: ${CARD_CONDITIONS[card.condition || 'NM'].color}">
                                                     ${CARD_CONDITIONS[card.condition || 'NM'].icon} ${card.condition || 'NM'}
@@ -2155,11 +2480,17 @@ function displayTrades(trades, containerId) {
                                 <div class="space-y-2">
                                     ${displayWanted.map(card => `
                                         <div class="flex items-center justify-between bg-white dark:bg-gray-600 px-3 py-2 rounded border border-gray-200 dark:border-gray-500">
-                                            <div class="flex items-center gap-2 flex-1">
-                                                ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded">` : ''}
-                                                <span class="text-sm text-gray-700 dark:text-gray-200">${card.name || card}</span>
+                                            <div class="flex items-center gap-2 flex-1 min-w-0">
+                                                ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded flex-shrink-0">` : ''}
+                                                <div class="flex-1 min-w-0">
+                                                    <span class="text-sm text-gray-700 dark:text-gray-200 block truncate">${card.name || card}</span>
+                                                    ${card.customPrice != null
+                                                        ? `<span class="text-[10px] font-semibold text-orange-600 dark:text-orange-400">💰 ${formatTradePrice(card.customPrice)}</span>`
+                                                        : `<div data-card-price data-card-id="${card.id || ''}" data-card-name="${card.name || ''}"></div>`
+                                                    }
+                                                </div>
                                             </div>
-                                            <div class="flex items-center space-x-2">
+                                            <div class="flex items-center space-x-2 flex-shrink-0">
                                                 <span class="text-xs px-2 py-1 rounded-full text-white font-medium" 
                                                       style="background-color: ${CARD_CONDITIONS[card.condition || 'NM'].color}">
                                                     ${CARD_CONDITIONS[card.condition || 'NM'].icon} ${card.condition || 'NM'}
@@ -2170,6 +2501,11 @@ function displayTrades(trades, containerId) {
                                     `).join('')}
                                 </div>
                             </div>
+                        </div>
+                        
+                        <!-- Balance de valor del intercambio -->
+                        <div class="mt-3 mb-2" data-trade-balance="${trade.id}">
+                            <p class="text-xs text-gray-400 italic text-center">Calculando balance…</p>
                         </div>
                         
                         <div class="flex justify-between items-center">
@@ -2213,6 +2549,14 @@ function displayTrades(trades, containerId) {
     });
 
     container.innerHTML = tradesHTML;
+    loadTradeCardPrices(container);
+    // Render balance for each trade asynchronously
+    trades.forEach(trade => {
+        const balanceEl = container.querySelector(`[data-trade-balance="${trade.id}"]`);
+        const displayOffered = trade.finalOfferedCards || trade.offeredCards;
+        const displayWanted  = trade.finalWantedCards  || trade.wantedCards;
+        renderTradeBalance(balanceEl, displayOffered, displayWanted);
+    });
 }
 
 // Función para formatear fechas
@@ -2728,6 +3072,61 @@ window.searchProposalCard = async function (input, uniqueId) {
             `;
     resultsContainer.classList.remove('hidden');
 
+    // Determinar si es una carta ofrecida (solo de la colección del usuario)
+    const isOffered = uniqueId.startsWith('proposal_offered_');
+
+    if (isOffered) {
+        // Para cartas ofrecidas en propuesta, buscar solo en la colección del usuario
+        if (!userCardsCache || userCardsCache.length === 0) {
+            if (!currentUser) {
+                resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">Inicia sesión para buscar en tu colección</div>`;
+                return;
+            }
+            try {
+                const myCardsCollectionRef = collection(db, `users/${currentUser.uid}/my_cards`);
+                const querySnapshot = await getDocs(myCardsCollectionRef);
+                userCardsCache = [];
+                querySnapshot.forEach(doc => {
+                    userCardsCache.push({ id: doc.id, ...doc.data() });
+                });
+            } catch (error) {
+                console.error('Error cargando cartas:', error);
+                resultsContainer.innerHTML = `<div class="p-3 text-center text-red-500">Error al cargar tu colección</div>`;
+                setTimeout(() => resultsContainer.classList.add('hidden'), 3000);
+                return;
+            }
+        }
+
+        if (userCardsCache.length === 0) {
+            resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">No tienes cartas en tu colección</div>`;
+            return;
+        }
+
+        const queryLower = query.toLowerCase();
+        const matchingCards = userCardsCache.filter(card =>
+            (card.name || '').toLowerCase().includes(queryLower) ||
+            (card.set || '').toLowerCase().includes(queryLower)
+        ).slice(0, 10);
+
+        const escapeForOnclick = (str) => String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+
+        if (matchingCards.length > 0) {
+            resultsContainer.innerHTML = matchingCards.map(card => `
+                <div class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex items-center gap-2 border-b border-gray-200 dark:border-gray-600 last:border-0"
+                     onclick="selectProposalCardFromCollection('${uniqueId}', '${escapeForOnclick(card.id)}', '${escapeForOnclick(card.name)}', '${escapeForOnclick(card.imageUrl || '')}', '${escapeForOnclick(card.set || '')}', '${escapeForOnclick(card.number || '')}', '${escapeForOnclick(card.language || 'Español')}', '${escapeForOnclick(card.condition || 'NM')}')">
+                    ${card.imageUrl ? `<img src="${card.imageUrl}" alt="${card.name}" class="w-10 h-14 object-contain rounded">` : '<div class="w-10 h-14 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded"><span>🎴</span></div>'}
+                    <div class="flex-1">
+                        <div class="font-medium text-sm text-gray-900 dark:text-white">${card.name || 'Sin nombre'}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">${card.set || 'Set desconocido'} • #${card.number || 'N/A'} • ${CARD_CONDITIONS[card.condition]?.icon || ''} ${card.condition || 'NM'} • ${card.language || 'Español'}</div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">No tienes esta carta en tu colección</div>`;
+        }
+        return;
+    }
+
     // Debounce de 500ms
     proposalSearchTimeout = setTimeout(async () => {
         try {
@@ -2841,6 +3240,29 @@ window.selectProposalCard = function (uniqueId, cardId, cardName, cardImage, set
     const resultsContainer = nameInput?.parentElement?.querySelector('.proposal-search-results');
     if (resultsContainer) {
         resultsContainer.classList.add('hidden');
+    }
+};
+
+// Seleccionar carta de la colección del usuario en el modal de propuesta
+window.selectProposalCardFromCollection = function (uniqueId, cardId, cardName, cardImage, setName, cardNumber, language, condition) {
+    // Llenar los datos de la carta (imagen, nombre, campos ocultos)
+    selectProposalCard(uniqueId, cardId, cardName, cardImage, setName, cardNumber);
+
+    const cardElement = document.querySelector(`[data-unique-id="${uniqueId}"]`);
+    if (!cardElement) return;
+
+    // Establecer condición e idioma de la carta de la colección
+    const conditionSelect = cardElement.querySelector(`select[name="${uniqueId}_condition"]`);
+    if (conditionSelect) conditionSelect.value = condition || 'NM';
+
+    const languageSelect = cardElement.querySelector(`select[name="${uniqueId}_language"]`);
+    if (languageSelect) {
+        for (let i = 0; i < languageSelect.options.length; i++) {
+            if (languageSelect.options[i].value === language) {
+                languageSelect.selectedIndex = i;
+                break;
+            }
+        }
     }
 };
 
@@ -4494,6 +4916,13 @@ function generateTradeCardHTML(cards) {
                         🌐 ${card.language || 'Español'}
                     </span>
                 </div>
+                <!-- Precio: personal preferido sobre mercado -->
+                <div class="text-center">
+                    ${card.customPrice != null
+                        ? `<span class="text-[10px] font-semibold text-orange-600 dark:text-orange-400">💰 ${formatTradePrice(card.customPrice)}</span>`
+                        : `<div data-card-price data-card-id="${card.id || ''}" data-card-name="${card.name || ''}"></div>`
+                    }
+                </div>
             </div>
         </div>
     `).join('');
@@ -4610,6 +5039,11 @@ function viewTradeDetails(tradeId) {
                             </div>
                         </div>
                         
+                        <!-- Balance de valor del intercambio -->
+                        <div id="tradeDetailBalance" class="mx-0 mb-6 px-0 pt-2">
+                            <p class="text-xs text-gray-400 italic text-center">Calculando balance de valor…</p>
+                        </div>
+                        
                         <!-- Description -->
                         ${trade.description ? `
                             <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6">
@@ -4695,6 +5129,13 @@ function viewTradeDetails(tradeId) {
             `;
 
     document.body.appendChild(modal);
+
+    // Cargar precios de las cartas en la vista de detalles
+    loadTradeCardPrices(modal);
+
+    // Calcular y mostrar balance de valor del intercambio
+    const balanceEl = modal.querySelector('#tradeDetailBalance');
+    renderTradeBalance(balanceEl, displayOffered, displayWanted);
 
     // Cerrar con ESC o click fuera
     modal.addEventListener('click', (e) => {
@@ -5144,6 +5585,7 @@ function addCardToTrade(type, forceAdd = false) {
                             <input type="hidden" name="${type}_set_${cardIndex}" value="">
                             <input type="hidden" name="${type}_number_${cardIndex}" value="">
                             <input type="hidden" name="${type}_fromMyCards_${cardIndex}" value="false">
+                            <input type="hidden" name="${type}_customPrice_${cardIndex}" value="">
                         </div>
                         <div class="card-search-results absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto hidden"></div>
                     </div>
@@ -5403,6 +5845,8 @@ async function handleCreateTradeSubmit(e) {
 
         if (nameInput && nameInput.value.trim()) {
             const fromMyCardsInput = cardEl.querySelector(`input[name*="offered_fromMyCards_"]`);
+            const customPriceInput = cardEl.querySelector(`input[name*="offered_customPrice_"]`);
+            const rawCustomPrice = customPriceInput ? customPriceInput.value : '';
             tradeData.offeredCards.push({
                 name: nameInput.value.trim(),
                 id: idInput ? idInput.value : '',
@@ -5411,7 +5855,8 @@ async function handleCreateTradeSubmit(e) {
                 number: numberInput ? numberInput.value : '',
                 condition: conditionSelect ? conditionSelect.value : 'NM',
                 language: languageSelect ? languageSelect.value : 'Español',
-                fromMyCards: fromMyCardsInput ? fromMyCardsInput.value === 'true' : false
+                fromMyCards: fromMyCardsInput ? fromMyCardsInput.value === 'true' : false,
+                customPrice: rawCustomPrice !== '' && !isNaN(parseFloat(rawCustomPrice)) ? parseFloat(rawCustomPrice) : null
             });
         }
     });
@@ -6423,20 +6868,21 @@ function renderCardsInCollection(cards) {
         const imageUrl = card.imageUrl;
 
         const row = document.createElement('div');
-        row.className = 'relative flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 h-16 overflow-visible';
+        // Use auto height to accommodate price rows
+        row.className = 'relative flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 overflow-visible';
         if (index < cards.length - 1) {
             row.className += ' border-b';
         }
 
         // Icono de imagen con hover
         const imgWrapper = document.createElement('div');
-        imgWrapper.className = 'w-10 h-10 flex items-center justify-center bg-transparent rounded cursor-pointer absolute left-3 top-1/2 -translate-y-1/2 z-10';
+        imgWrapper.className = 'w-10 h-10 flex items-center justify-center bg-transparent rounded cursor-pointer absolute left-3 top-3 z-10';
         imgWrapper.title = 'Pasa el mouse para ver imagen';
         imgWrapper.innerHTML = isOwned ? '<span class="text-xl">🎴</span>' : '<span class="text-xl opacity-50">🎴</span>';
 
         // Contenedor de imagen con hover
         const imgContainer = document.createElement('div');
-        imgContainer.className = 'hidden absolute left-14 top-1/2 -translate-y-1/2 z-30';
+        imgContainer.className = 'hidden absolute left-14 top-0 z-30';
         imgContainer.style.pointerEvents = 'none';
 
         const imgEl = document.createElement('img');
@@ -6462,44 +6908,66 @@ function renderCardsInCollection(cards) {
         info.className = 'flex-1 min-w-0 pl-16';
 
         if (isOwned) {
+            const escapedId = (card.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const escapedName = (card.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const customPriceDisplay = card.customPrice != null
+                ? `<span class="text-orange-600 dark:text-orange-400 font-semibold">💰 ${formatTradePrice(card.customPrice)}</span>`
+                : `<span class="text-gray-400 dark:text-gray-500 italic">Sin precio personal</span>`;
+
             info.innerHTML = `
-                        <div class="flex items-center justify-between">
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2">
-                                    <span class="font-semibold text-gray-900 dark:text-white">${card.name}</span>
-                                    ${card.quantity > 1 ? `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold">x${card.quantity}</span>` : ''}
-                                    <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">En colección</span>
-                                </div>
-                                <div class="text-xs text-gray-600">
-                                    #${card.number} · ${card.set} · ${card.series || 'N/A'} · ${card.language || 'N/A'}
-                                </div>
-                            </div>
-                            <button class="btn-secondary px-3 py-1.5 rounded text-xs" onclick="removeCardFromCollection('${card.id}')">
-                                Eliminar
-                            </button>
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-semibold text-gray-900 dark:text-white">${card.name}</span>
+                            ${card.quantity > 1 ? `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold">x${card.quantity}</span>` : ''}
+                            <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">En colección</span>
                         </div>
-                    `;
+                        <div class="text-xs text-gray-600 dark:text-gray-400">
+                            #${card.number} · ${card.set} · ${card.series || 'N/A'} · ${card.language || 'N/A'}
+                        </div>
+                        <div class="flex items-center gap-2 mt-0.5 flex-wrap text-xs">
+                            <span class="text-gray-500 dark:text-gray-400">Mercado:</span>
+                            <span data-market-price data-card-id="${card.id}" data-card-name="${card.name}" class="text-xs">
+                                <span class="text-gray-400 italic">cargando…</span>
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-0.5 text-xs">
+                            <span class="text-gray-500 dark:text-gray-400">Personal:</span>
+                            ${customPriceDisplay}
+                            <button onclick="showEditCustomPriceModal('${escapedId}', '${escapedName}', ${card.customPrice != null ? card.customPrice : 'null'})"
+                                    class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 ml-1"
+                                    title="Editar precio personal">✏️</button>
+                        </div>
+                    </div>
+                    <button class="btn-secondary px-3 py-1.5 rounded text-xs flex-shrink-0" onclick="removeCardFromCollection('${escapedId}')">
+                        Eliminar
+                    </button>
+                </div>
+            `;
         } else {
             info.innerHTML = `
-                        <div class="flex items-center justify-between">
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2">
-                                    <span class="font-semibold text-gray-500 line-through">${card.name}</span>
-                                    <span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Falta</span>
-                                </div>
-                                <div class="text-xs text-gray-400">
-                                    #${card.number} · ${card.set} · ${card.series || 'N/A'}
-                                </div>
-                            </div>
-                            <span class="text-sm text-gray-500 dark:text-gray-400">Falta en tu colección</span>
+                <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <span class="font-semibold text-gray-500 line-through">${card.name}</span>
+                            <span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Falta</span>
                         </div>
-                    `;
+                        <div class="text-xs text-gray-400">
+                            #${card.number} · ${card.set} · ${card.series || 'N/A'}
+                        </div>
+                    </div>
+                    <span class="text-sm text-gray-500 dark:text-gray-400">Falta en tu colección</span>
+                </div>
+            `;
         }
 
         row.appendChild(imgWrapper);
         row.appendChild(info);
         myCardsContainer.appendChild(row);
     });
+
+    // Load market prices asynchronously
+    loadCollectionMarketPrices(myCardsContainer);
 }
 
 // Función para eliminar carta de la colección
@@ -10341,22 +10809,23 @@ function renderMyCards(cards) {
         const number = card.number || '';
         const language = card.language || 'Español';
         const condition = card.condition || 'NM';
+        const cardId = card.id || name;
 
         const row = document.createElement('div');
-        row.className = 'relative flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 h-16 overflow-visible';
+        row.className = 'relative flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 overflow-visible';
         if (index < cards.length - 1) {
             row.className += ' border-b';
         }
 
         // Icono de imagen con hover
         const imgWrapper = document.createElement('div');
-        imgWrapper.className = 'w-10 h-10 flex items-center justify-center bg-transparent rounded cursor-pointer absolute left-3 top-1/2 -translate-y-1/2 z-10';
+        imgWrapper.className = 'w-10 h-10 flex items-center justify-center bg-transparent rounded cursor-pointer absolute left-3 top-3 z-10';
         imgWrapper.title = 'Pasa el mouse para ver imagen';
         imgWrapper.innerHTML = '<span class="text-xl">🎴</span>';
 
         // Contenedor de imagen con hover
         const imgContainer = document.createElement('div');
-        imgContainer.className = 'hidden absolute left-14 top-1/2 -translate-y-1/2 z-30';
+        imgContainer.className = 'hidden absolute left-14 top-0 z-30';
         imgContainer.style.pointerEvents = 'none';
 
         const imgEl = document.createElement('img');
@@ -10380,27 +10849,50 @@ function renderMyCards(cards) {
         // Información de la carta
         const info = document.createElement('div');
         info.className = 'flex-1 min-w-0 pl-16';
+
+        const escapedId = cardId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const escapedName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const customPriceDisplay = card.customPrice != null
+            ? `<span class="text-orange-600 dark:text-orange-400 font-semibold">💰 ${formatTradePrice(card.customPrice)}</span>`
+            : `<span class="text-gray-400 dark:text-gray-500 italic">Sin precio personal</span>`;
+
         info.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2">
-                                                                    <span class="font-semibold text-gray-900 dark:text-white">${name}</span>
-                                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">En colección</span>
-                            </div>
-                            <div class="text-xs text-gray-600">
-                                #${number} · ${setName} · ${language} · ${condition}
-                            </div>
-                        </div>
-                        <button class="btn-secondary px-3 py-1.5 rounded text-xs" onclick="removeCardFromCollection('${card.id || name}')">
-                            Eliminar
-                        </button>
+            <div class="flex items-start justify-between gap-2">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-semibold text-gray-900 dark:text-white">${name}</span>
+                        <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">En colección</span>
                     </div>
-                `;
+                    <div class="text-xs text-gray-600 dark:text-gray-400">
+                        #${number} · ${setName} · ${language} · ${condition}
+                    </div>
+                    <div class="flex items-center gap-2 mt-0.5 flex-wrap text-xs">
+                        <span class="text-gray-500 dark:text-gray-400">Mercado:</span>
+                        <span data-market-price data-card-id="${cardId}" data-card-name="${name}" class="text-xs">
+                            <span class="text-gray-400 italic">cargando…</span>
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-0.5 text-xs">
+                        <span class="text-gray-500 dark:text-gray-400">Personal:</span>
+                        ${customPriceDisplay}
+                        <button onclick="showEditCustomPriceModal('${escapedId}', '${escapedName}', ${card.customPrice != null ? card.customPrice : 'null'})"
+                                class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 ml-1"
+                                title="Editar precio personal">✏️</button>
+                    </div>
+                </div>
+                <button class="btn-secondary px-3 py-1.5 rounded text-xs flex-shrink-0" onclick="removeCardFromCollection('${escapedId}')">
+                    Eliminar
+                </button>
+            </div>
+        `;
 
         row.appendChild(imgWrapper);
         row.appendChild(info);
         container.appendChild(row);
     });
+
+    // Load market prices asynchronously
+    loadCollectionMarketPrices(container);
 }
 
 // Estado de filtros de búsqueda
