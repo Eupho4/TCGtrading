@@ -79,6 +79,12 @@ let userCardsCache = []; // Cache para las cartas del usuario
 // Cache de precios para cartas en intercambios
 const tradePriceCache = new Map();
 
+// Etiquetas de fuentes de precios
+const PRICE_LABEL_CARDMARKET = 'CM';
+const PRICE_LABEL_TCGPLAYER  = 'TCG';
+const PRICE_TOOLTIP_CARDMARKET = 'Cardmarket (precio europeo en EUR)';
+const PRICE_TOOLTIP_TCGPLAYER  = 'TCGPlayer (precio norteamericano en USD)';
+
 // Obtener precio de una carta por ID o nombre
 async function fetchCardPrice(cardId, cardName) {
     const cacheKey = cardId || cardName;
@@ -130,8 +136,8 @@ async function loadTradeCardPrices(container) {
         if (prices && (prices.cardmarket || prices.tcgplayer)) {
             el.innerHTML = `
                 <div class="flex flex-col gap-0.5 mt-1">
-                    ${prices.cardmarket ? `<span class="text-[10px] font-medium text-green-600 dark:text-green-400">💳 ${formatTradePrice(prices.cardmarket)}</span>` : ''}
-                    ${prices.tcgplayer ? `<span class="text-[10px] font-medium text-blue-600 dark:text-blue-400">🎮 $${prices.tcgplayer.toFixed(2)}</span>` : ''}
+                    ${prices.cardmarket ? `<span class="text-[10px] font-medium text-green-600 dark:text-green-400" title="${PRICE_TOOLTIP_CARDMARKET}">💳 ${PRICE_LABEL_CARDMARKET} ${formatTradePrice(prices.cardmarket)}</span>` : ''}
+                    ${prices.tcgplayer ? `<span class="text-[10px] font-medium text-blue-600 dark:text-blue-400" title="${PRICE_TOOLTIP_TCGPLAYER}">🎮 ${PRICE_LABEL_TCGPLAYER} $${prices.tcgplayer.toFixed(2)}</span>` : ''}
                 </div>`;
         } else {
             el.innerHTML = '';
@@ -150,8 +156,8 @@ async function loadCollectionMarketPrices(container) {
         const prices = await fetchCardPrice(cardId, cardName);
         if (prices && (prices.cardmarket || prices.tcgplayer)) {
             const parts = [];
-            if (prices.cardmarket) parts.push(`<span class="text-green-600 dark:text-green-400 font-medium">💳 ${formatTradePrice(prices.cardmarket)}</span>`);
-            if (prices.tcgplayer) parts.push(`<span class="text-blue-600 dark:text-blue-400 font-medium">🎮 $${prices.tcgplayer.toFixed(2)}</span>`);
+            if (prices.cardmarket) parts.push(`<span class="text-green-600 dark:text-green-400 font-medium" title="${PRICE_TOOLTIP_CARDMARKET}">💳 ${PRICE_LABEL_CARDMARKET} ${formatTradePrice(prices.cardmarket)}</span>`);
+            if (prices.tcgplayer) parts.push(`<span class="text-blue-600 dark:text-blue-400 font-medium" title="${PRICE_TOOLTIP_TCGPLAYER}">🎮 ${PRICE_LABEL_TCGPLAYER} $${prices.tcgplayer.toFixed(2)}</span>`);
             el.innerHTML = parts.join('<span class="text-gray-400 mx-1">·</span>');
         } else {
             el.innerHTML = '<span class="text-gray-400 italic">Sin precio de mercado</span>';
@@ -1986,6 +1992,11 @@ window.selectFromMyCards = function (type, cardId, cardName, cardImage, setName,
         console.log('✅ Carta marcada como proveniente de "Mis Cartas"');
     }
 
+    // Propagar precio personalizado desde la caché de colección
+    const cachedCard = userCardsCache.find(c => c.id === cardId);
+    const customPriceInput = cardElement.querySelector(`input[name="${type}_customPrice_${targetCardIndex}"]`);
+    if (customPriceInput) customPriceInput.value = (cachedCard?.customPrice != null) ? cachedCard.customPrice : '';
+
     // Verificar que el nombre se haya establecido correctamente
     const nameInput = cardElement.querySelector(`input[name="${type}_name_${targetCardIndex}"]`);
     if (nameInput) {
@@ -3020,6 +3031,7 @@ function createProposalCardInput(type, index, cardData = {}, isPreloaded = false
                             <input type="hidden" name="${uniqueId}_image" value="${cardData.image || ''}">
                             <input type="hidden" name="${uniqueId}_set" value="${cardData.set || ''}">
                             <input type="hidden" name="${uniqueId}_number" value="${cardData.number || ''}">
+                            <input type="hidden" name="${uniqueId}_customPrice" value="${cardData.customPrice != null ? cardData.customPrice : ''}">
                         </div>
                         
                         <button type="button" onclick="this.closest('.proposal-card').remove()"
@@ -3413,6 +3425,7 @@ window.selectFromMyCardsToProposal = function (type, cardId, cardName, cardImage
     const index = container.children.length;
 
     // Crear los datos de la carta
+    const cachedCard = userCardsCache.find(c => c.id === cardId);
     const cardData = {
         id: cardId,
         name: cardName,
@@ -3421,7 +3434,8 @@ window.selectFromMyCardsToProposal = function (type, cardId, cardName, cardImage
         number: cardNumber,
         language: language,
         condition: condition,
-        fromMyCards: true
+        fromMyCards: true,
+        customPrice: cachedCard?.customPrice ?? null
     };
 
     console.log('📝 cardData creado:', cardData);
@@ -3515,6 +3529,9 @@ window.handleProposalSubmit = function (event, originalTradeId) {
             }
         });
         if (cardData.name && cardData.name.trim()) {
+            if ('customPrice' in cardData) {
+                cardData.customPrice = cardData.customPrice !== '' && !isNaN(parseFloat(cardData.customPrice)) ? parseFloat(cardData.customPrice) : null;
+            }
             proposalData.offeredCards.push(cardData);
         }
     });
@@ -3532,6 +3549,9 @@ window.handleProposalSubmit = function (event, originalTradeId) {
             }
         });
         if (cardData.name && cardData.name.trim()) {
+            if ('customPrice' in cardData) {
+                cardData.customPrice = cardData.customPrice !== '' && !isNaN(parseFloat(cardData.customPrice)) ? parseFloat(cardData.customPrice) : null;
+            }
             proposalData.wantedCards.push(cardData);
         }
     });
