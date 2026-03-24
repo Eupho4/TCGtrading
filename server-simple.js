@@ -77,6 +77,15 @@ const stripeApiLimiter = rateLimit({
     message: { success: false, error: 'Too many requests. Please try again later.' }
 });
 
+// ── Rate limiting for database read routes ────────────────────────────────────
+const dbReadLimiter = rateLimit({
+    windowMs: 60 * 1000,        // 1 minute
+    max: 120,                   // Max 120 requests per IP per minute
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: 'Too many requests. Please try again later.' }
+});
+
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
     res.json({
@@ -630,7 +639,7 @@ app.post('/api/stripe/webhooks', async (req, res) => {
 });
 
 // Búsqueda de cartas - DIRECTO a PostgreSQL
-app.get('/api/pokemontcg/cards', async (req, res) => {
+app.get('/api/pokemontcg/cards', dbReadLimiter, async (req, res) => {
     try {
         const {
             q = '',
@@ -804,8 +813,38 @@ app.get('/api/pokemontcg/cards', async (req, res) => {
     }
 });
 
+// Obtener precios en lote para múltiples IDs de cartas
+app.get('/api/pokemontcg/cards/prices', dbReadLimiter, async (req, res) => {
+    try {
+        const { ids = '' } = req.query;
+        const cardIds = ids.split(',').map(id => id.trim()).filter(Boolean);
+
+        if (cardIds.length === 0) {
+            return res.json({ success: true, data: {} });
+        }
+
+        const placeholders = cardIds.map((_, i) => `$${i + 1}`).join(', ');
+        const result = await pool.query(
+            `SELECT id, tcgplayer, cardmarket FROM cards WHERE id IN (${placeholders})`,
+            cardIds
+        );
+
+        const priceMap = {};
+        result.rows.forEach(row => {
+            const cmPrice = row.cardmarket?.avg30 || row.cardmarket?.avg1 || row.cardmarket?.avg || null;
+            const tcgPrice = row.tcgplayer?.normal?.marketPrice || row.tcgplayer?.holofoil?.marketPrice || null;
+            priceMap[row.id] = { cardmarket: cmPrice, tcgplayer: tcgPrice };
+        });
+
+        res.json({ success: true, data: priceMap });
+    } catch (error) {
+        console.error('Error al obtener precios en lote:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Obtener sets
-app.get('/api/pokemontcg/sets', async (req, res) => {
+app.get('/api/pokemontcg/sets', dbReadLimiter, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT 
@@ -843,7 +882,7 @@ app.get('/api/pokemontcg/sets', async (req, res) => {
 });
 
 // Obtener series
-app.get('/api/pokemontcg/series', async (req, res) => {
+app.get('/api/pokemontcg/series', dbReadLimiter, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT 
