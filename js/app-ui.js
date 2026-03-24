@@ -11293,8 +11293,8 @@ function getUsersWithCardForTrade(cardName, cardId) {
                     return nameMatch || idMatch;
                 });
 
-                if (matchingCard && !seen.has(userId + '_' + trade.id)) {
-                    seen.add(userId + '_' + trade.id);
+                if (matchingCard && !seen.has(userId)) {
+                    seen.add(userId);
                     users.push({
                         userId,
                         userName: trade.user || trade.userName || 'Usuario',
