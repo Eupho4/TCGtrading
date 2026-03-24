@@ -1992,6 +1992,11 @@ window.selectFromMyCards = function (type, cardId, cardName, cardImage, setName,
         console.log('✅ Carta marcada como proveniente de "Mis Cartas"');
     }
 
+    // Propagar precio personalizado desde la caché de colección
+    const cachedCard = userCardsCache.find(c => c.id === cardId);
+    const customPriceInput = cardElement.querySelector(`input[name="${type}_customPrice_${targetCardIndex}"]`);
+    if (customPriceInput) customPriceInput.value = (cachedCard?.customPrice != null) ? cachedCard.customPrice : '';
+
     // Verificar que el nombre se haya establecido correctamente
     const nameInput = cardElement.querySelector(`input[name="${type}_name_${targetCardIndex}"]`);
     if (nameInput) {
@@ -3026,6 +3031,7 @@ function createProposalCardInput(type, index, cardData = {}, isPreloaded = false
                             <input type="hidden" name="${uniqueId}_image" value="${cardData.image || ''}">
                             <input type="hidden" name="${uniqueId}_set" value="${cardData.set || ''}">
                             <input type="hidden" name="${uniqueId}_number" value="${cardData.number || ''}">
+                            <input type="hidden" name="${uniqueId}_customPrice" value="${cardData.customPrice != null ? cardData.customPrice : ''}">
                         </div>
                         
                         <button type="button" onclick="this.closest('.proposal-card').remove()"
@@ -3419,6 +3425,7 @@ window.selectFromMyCardsToProposal = function (type, cardId, cardName, cardImage
     const index = container.children.length;
 
     // Crear los datos de la carta
+    const cachedCard = userCardsCache.find(c => c.id === cardId);
     const cardData = {
         id: cardId,
         name: cardName,
@@ -3427,7 +3434,8 @@ window.selectFromMyCardsToProposal = function (type, cardId, cardName, cardImage
         number: cardNumber,
         language: language,
         condition: condition,
-        fromMyCards: true
+        fromMyCards: true,
+        customPrice: cachedCard?.customPrice ?? null
     };
 
     console.log('📝 cardData creado:', cardData);
@@ -3521,6 +3529,9 @@ window.handleProposalSubmit = function (event, originalTradeId) {
             }
         });
         if (cardData.name && cardData.name.trim()) {
+            if ('customPrice' in cardData) {
+                cardData.customPrice = cardData.customPrice !== '' && !isNaN(parseFloat(cardData.customPrice)) ? parseFloat(cardData.customPrice) : null;
+            }
             proposalData.offeredCards.push(cardData);
         }
     });
@@ -3538,6 +3549,9 @@ window.handleProposalSubmit = function (event, originalTradeId) {
             }
         });
         if (cardData.name && cardData.name.trim()) {
+            if ('customPrice' in cardData) {
+                cardData.customPrice = cardData.customPrice !== '' && !isNaN(parseFloat(cardData.customPrice)) ? parseFloat(cardData.customPrice) : null;
+            }
             proposalData.wantedCards.push(cardData);
         }
     });
