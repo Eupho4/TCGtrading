@@ -11167,16 +11167,19 @@ function renderCardsFromData(cards) {
         const safeNumber = escapeForOnclick(card.number || 'N/A');
         const safeImageUrl = escapeForOnclick(card.images?.small);
 
+        // ID único para el panel de usuarios (basado en el ID de la carta)
+        const panelId = 'users-panel-' + (card.id || '').replace(/[^a-zA-Z0-9]/g, '-');
+
         const row = document.createElement('div');
-        row.className = 'relative flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 h-16 overflow-visible';
+        row.className = 'relative flex items-start gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 min-h-[4rem] overflow-visible';
         const imgWrapper = document.createElement('div');
-        imgWrapper.className = 'w-10 h-10 flex items-center justify-center bg-transparent rounded cursor-pointer absolute left-3 top-1/2 -translate-y-1/2 z-10';
+        imgWrapper.className = 'w-10 h-10 flex items-center justify-center bg-transparent rounded cursor-pointer absolute left-3 top-3 z-10';
         imgWrapper.title = 'Pasa el mouse para ver imagen';
         imgWrapper.innerHTML = '<span class="text-xl">🎴</span>';
 
         // Crear contenedor de imagen con hover
         const imgContainer = document.createElement('div');
-        imgContainer.className = 'hidden absolute left-14 top-1/2 -translate-y-1/2 z-30';
+        imgContainer.className = 'hidden absolute left-14 top-0 z-30';
         imgContainer.style.pointerEvents = 'none';
 
         // Función para obtener URL de imagen válida
@@ -11225,11 +11228,14 @@ function renderCardsFromData(cards) {
         const cardmarketPrice = card.cardmarket?.avg30 || card.cardmarket?.avg1 || card.cardmarket?.avg || null;
         const tcgplayerPrice = card.tcgplayer?.normal?.marketPrice || card.tcgplayer?.holofoil?.marketPrice || null;
 
+        // Precio de mercado estándar (preferir Cardmarket en EUR)
+        const standardMarketPrice = cardmarketPrice;
+
         const info = document.createElement('div');
         info.className = 'flex-1 min-w-0 pl-16';
         info.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div class="truncate">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0 flex-1">
                             <div class="font-semibold text-gray-900 dark:text-white truncate">${card.name || 'Nombre no disponible'}</div>
                             <div class="text-xs text-gray-600 dark:text-gray-300 truncate">Set: ${card.set?.name || 'N/A'} · Serie: ${card.set?.series || 'N/A'} · Nº: ${card.number || 'N/A'}</div>
                             ${(cardmarketPrice || tcgplayerPrice) ? `
@@ -11239,13 +11245,19 @@ function renderCardsFromData(cards) {
                                 </div>
                             ` : ''}
                         </div>
-                        <div class="flex gap-2 items-center">
-                            <button class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs"
+                        <div class="flex flex-wrap gap-1 items-start justify-end shrink-0">
+                            <button class="bg-purple-500 hover:bg-purple-600 active:bg-purple-700 text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1 transition-colors"
+                                id="ver-usuarios-btn-${panelId}"
+                                onclick="showUsersWithCard('${safeCardId}', '${safeCardName}', '${safeSetName}', '${safeImageUrl}', '${panelId}', ${standardMarketPrice || 'null'}, this)">
+                                <span>👥</span><span>Ver usuarios</span>
+                            </button>
+                            <button class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded text-xs"
                                 onclick="showCardDetailsOnly('${safeCardId}', '${safeCardName}', '${safeImageUrl}', '${safeSetName}', '${safeSeries}', '${safeNumber}')">Ver Detalles</button>
-                            <button class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs"
+                            <button class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded text-xs"
                                 onclick="addCardDirectly('${safeCardId}', '${safeCardName}', '${safeImageUrl}', '${safeSetName}', '${safeSeries}', '${safeNumber}')">+ Añadir</button>
                         </div>
                     </div>
+                    <div id="${panelId}" class="hidden mt-2 border-t border-gray-100 dark:border-gray-600 pt-2"></div>
                 `;
 
         row.appendChild(imgWrapper);
@@ -11255,6 +11267,163 @@ function renderCardsFromData(cards) {
     });
 
 }
+
+// Busca en localStorage los usuarios que tienen una carta en sus intercambios ofrecidos
+function getUsersWithCardForTrade(cardName, cardId) {
+    const users = [];
+    const seen = new Set(); // evitar duplicados por usuario
+
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith('userTrades_')) continue;
+
+        try {
+            const trades = JSON.parse(localStorage.getItem(key) || '[]');
+            const userId = key.replace('userTrades_', '');
+
+            // Saltar las cartas del usuario actual
+            if (currentUser && userId === currentUser.uid) continue;
+
+            trades.forEach(trade => {
+                if (!trade.offeredCards || !Array.isArray(trade.offeredCards)) return;
+
+                const matchingCard = trade.offeredCards.find(c => {
+                    const nameMatch = (c.name || '').toLowerCase() === (cardName || '').toLowerCase();
+                    const idMatch = cardId && c.id && c.id === cardId;
+                    return nameMatch || idMatch;
+                });
+
+                if (matchingCard && !seen.has(userId + '_' + trade.id)) {
+                    seen.add(userId + '_' + trade.id);
+                    users.push({
+                        userId,
+                        userName: trade.user || trade.userName || 'Usuario',
+                        tradeId: trade.id,
+                        customPrice: matchingCard.customPrice ?? null,
+                        condition: matchingCard.condition || null,
+                        language: matchingCard.language || null,
+                        cardImage: matchingCard.image || null
+                    });
+                }
+            });
+        } catch (e) {
+            // ignorar entradas corruptas
+        }
+    }
+
+    return users;
+}
+
+// Muestra u oculta el panel de usuarios que tienen la carta disponible para intercambio
+window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, panelId, marketPrice, buttonEl) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    // Toggle: si ya está visible, ocultar
+    if (!panel.classList.contains('hidden')) {
+        panel.classList.add('hidden');
+        if (buttonEl) {
+            buttonEl.innerHTML = '<span>👥</span><span>Ver usuarios</span>';
+            buttonEl.classList.remove('bg-purple-700');
+            buttonEl.classList.add('bg-purple-500');
+        }
+        return;
+    }
+
+    // Mostrar estado de carga
+    panel.classList.remove('hidden');
+    panel.innerHTML = `
+        <div class="flex items-center gap-2 py-2 px-3 text-sm text-gray-500 dark:text-gray-400">
+            <div class="animate-spin rounded-full h-4 w-4 border-2 border-purple-500 border-t-transparent"></div>
+            <span>Buscando usuarios...</span>
+        </div>
+    `;
+    if (buttonEl) {
+        buttonEl.innerHTML = '<span>👥</span><span>Ver usuarios</span>';
+        buttonEl.classList.add('bg-purple-700');
+        buttonEl.classList.remove('bg-purple-500');
+    }
+
+    // Buscar en localStorage (síncrono, pero simulamos asíncrono para mejor UX)
+    setTimeout(() => {
+        const users = getUsersWithCardForTrade(cardName, cardId);
+
+        if (users.length === 0) {
+            panel.innerHTML = `
+                <div class="py-3 px-3 text-sm text-gray-500 dark:text-gray-400 text-center">
+                    😔 Ningún usuario tiene esta carta disponible para intercambio en este momento.
+                </div>
+            `;
+            if (buttonEl) buttonEl.innerHTML = `<span>👥</span><span>Ver usuarios (0)</span>`;
+            return;
+        }
+
+        const usersHTML = users.map(user => {
+            const safeUserId = String(user.userId || '').replace(/[^a-zA-Z0-9]/g, '-');
+            const userStats = JSON.parse(localStorage.getItem(`userStats_${user.userId}`) || '{}');
+            const ratingHtml = userStats.averageRating
+                ? `${window.displayPokeballRating ? window.displayPokeballRating(userStats.averageRating, false, 'small') : ''}<span class="text-xs text-gray-500 dark:text-gray-400 ml-1">${userStats.averageRating.toFixed(1)}/5</span>`
+                : '<span class="text-xs text-gray-400 dark:text-gray-500 italic">Sin valoraciones</span>';
+
+            let priceHTML;
+            if (user.customPrice != null) {
+                priceHTML = `<span class="text-orange-600 dark:text-orange-400 font-semibold">💰 ${formatTradePrice(user.customPrice)}</span><span class="text-xs text-orange-400 dark:text-orange-500 ml-1">(precio personal)</span>`;
+            } else if (marketPrice != null) {
+                priceHTML = `<span class="text-green-600 dark:text-green-400 font-semibold">💳 ${formatTradePrice(marketPrice)}</span><span class="text-xs text-gray-400 dark:text-gray-500 ml-1">(precio estándar)</span>`;
+            } else {
+                priceHTML = '<span class="text-gray-400 dark:text-gray-500 italic text-xs">Precio no disponible</span>';
+            }
+
+            const escStr = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+            return `
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2 px-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 mb-2">
+                    <div class="flex flex-col gap-0.5 min-w-0">
+                        <div class="font-semibold text-sm text-gray-900 dark:text-white flex items-center gap-1">
+                            <span>👤</span><span class="truncate">${user.userName}</span>
+                        </div>
+                        <div class="flex items-center gap-1 flex-wrap">${ratingHtml}</div>
+                        <div class="flex items-center gap-1 flex-wrap text-sm">${priceHTML}</div>
+                        ${user.condition ? `<div class="text-xs text-gray-500 dark:text-gray-400">${user.condition}${user.language ? ' · ' + user.language : ''}</div>` : ''}
+                    </div>
+                    <button onclick="proposeTradeForCard('${escStr(cardId)}', '${escStr(cardName)}', '${escStr(cardImageUrl)}', '${escStr(cardSet)}', '')"
+                            class="shrink-0 bg-green-500 hover:bg-green-600 active:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-colors w-full sm:w-auto text-center">
+                        🤝 Proponer intercambio
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+        panel.innerHTML = `
+            <div class="pb-1">
+                <div class="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 px-1">
+                    Usuarios con esta carta disponible para intercambio:
+                </div>
+                ${usersHTML}
+            </div>
+        `;
+        if (buttonEl) buttonEl.innerHTML = `<span>👥</span><span>Ver usuarios (${users.length})</span>`;
+    }, 50);
+};
+
+// Abre el modal de creación de intercambio con la carta buscada ya pre-cargada en la sección "Cartas que Busco"
+window.proposeTradeForCard = function(cardId, cardName, cardImageUrl, cardSetName, cardNumber) {
+    if (!currentUser) {
+        showNotification('Debes iniciar sesión para proponer un intercambio', 'warning', 4000);
+        showAuthModal('login');
+        return;
+    }
+
+    // Abrir modal de creación de intercambio
+    showCreateTradeModal();
+
+    // Esperar a que el modal esté listo y pre-cargar la carta buscada
+    setTimeout(() => {
+        if (typeof window.selectCardForTrade === 'function') {
+            window.selectCardForTrade('wanted', 0, cardId, cardName, cardImageUrl, cardSetName, cardNumber || '', false);
+        }
+    }, 350);
+};
 
 // Funciones para mostrar/ocultar loading de página
 function showPageLoading() {
