@@ -37,6 +37,19 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
+    // Reglas para el índice global de cartas transferibles
+    match /transferable_cards/{cardId} {
+      // Cualquier usuario autenticado puede leer (para ver cartas disponibles)
+      allow read: if request.auth != null;
+
+      match /users/{userId} {
+        // Cualquier usuario autenticado puede leer entradas de transferibles
+        allow read: if request.auth != null;
+        // Solo el propietario puede escribir o borrar su propia entrada
+        allow write, delete: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
     // Reglas para intercambios (trades)
     match /trades/{tradeId} {
       allow read, write: if request.auth != null && 
@@ -156,6 +169,11 @@ service cloud.firestore {
 
 📁 userCollections/
   └── {userId}                  # Documento de colección consolidada
+
+📁 transferable_cards/          # Índice global de cartas para intercambio
+  └── {cardId}/
+      └── 📁 users/
+          └── {userId}          # Entrada del usuario que ofrece esa carta
 
 📁 chats/
   └── {chatId}                  # Chats entre usuarios
