@@ -239,6 +239,59 @@ async function renderTradeBalance(balanceEl, offeredCards, wantedCards) {
 
 // ── Precio personalizado por carta ──────────────────────────────────────────
 
+// ── Transferible: marcar/desmarcar carta como disponible para intercambio ──
+
+// Actualiza el estado transferible de una carta en Firestore y en el índice global
+window.toggleCardTransferable = async function(cardId, cardName, imageUrl, setName, condition, language, customPrice, currentIsTransferable) {
+    if (!currentUser) {
+        showNotification('Debes iniciar sesión para marcar cartas como transferibles', 'warning', 3000);
+        return;
+    }
+    try {
+        const cardRef = doc(db, 'users', currentUser.uid, 'my_cards', cardId);
+        const transferRef = doc(db, 'transferable_cards', cardId, 'users', currentUser.uid);
+
+        // Usar el estado pasado como parámetro; si no, intentar desde caché
+        const cached = userCardsCache.find(c => c.id === cardId);
+        const resolvedCurrent = currentIsTransferable !== undefined ? !!currentIsTransferable : (cached ? !!cached.isTransferable : false);
+        const newValue = !resolvedCurrent;
+
+        await setDoc(cardRef, { isTransferable: newValue }, { merge: true });
+        if (cached) cached.isTransferable = newValue;
+
+        if (newValue) {
+            const userName = await getUserDisplayName();
+            await setDoc(transferRef, {
+                userId: currentUser.uid,
+                userName,
+                customPrice: customPrice != null ? customPrice : null,
+                condition: condition || 'NM',
+                language: language || 'Español',
+                cardId,
+                cardName,
+                imageUrl: imageUrl || '',
+                setName: setName || '',
+                addedAt: new Date()
+            });
+            showNotification(`✅ "${cardName}" disponible para intercambio`, 'success', 3000);
+        } else {
+            await deleteDoc(transferRef);
+            showNotification(`🔒 "${cardName}" ya no está disponible para intercambio`, 'info', 3000);
+        }
+
+        // Re-renderizar la colección visible
+        if (typeof loadMyCollection === 'function' && document.getElementById('myCardsContainer')) {
+            loadMyCollection(currentUser.uid);
+        }
+        if (typeof loadUserCollection === 'function' && document.getElementById('myCardsGrid')) {
+            loadUserCollection();
+        }
+    } catch (e) {
+        console.error('Error al actualizar estado transferible:', e);
+        showNotification('Error al actualizar el estado', 'error', 3000);
+    }
+};
+
 // Guardar/actualizar el precio personal de una carta en Firestore y caché
 window.updateCardCustomPrice = async function(cardId, price) {
     if (!currentUser) return;
@@ -251,6 +304,13 @@ window.updateCardCustomPrice = async function(cardId, price) {
         // Update cache
         const cached = userCardsCache.find(c => c.id === cardId);
         if (cached) cached.customPrice = priceValue;
+        // Sync price in transferable_cards index if card is transferable
+        if (cached && cached.isTransferable) {
+            try {
+                const transferRef = doc(db, 'transferable_cards', cardId, 'users', currentUser.uid);
+                await setDoc(transferRef, { customPrice: priceValue }, { merge: true });
+            } catch (_) { /* ignorar errores de sincronización */ }
+        }
         showNotification(priceValue !== null ? `Precio personal actualizado: ${formatTradePrice(priceValue)}` : 'Precio personal eliminado', 'success', 3000);
         return priceValue;
     } catch (e) {
@@ -6951,6 +7011,11 @@ function renderCardsInCollection(cards) {
         if (isOwned) {
             const escapedId = (card.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
             const escapedName = (card.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const escapedSet = (card.set || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const escapedImage = (card.imageUrl || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const escapedCondition = (card.condition || 'NM').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const escapedLanguage = (card.language || 'Español').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const isTransferable = !!card.isTransferable;
             const customPriceDisplay = card.customPrice != null
                 ? `<span class="text-orange-600 dark:text-orange-400 font-semibold">💰 ${formatTradePrice(card.customPrice)}</span>`
                 : `<span class="text-gray-400 dark:text-gray-500 italic">Sin precio personal</span>`;
@@ -6965,6 +7030,10 @@ function renderCardsInCollection(cards) {
                 marketPriceHtml = parts.join('<span class="text-gray-400 mx-1">·</span>');
             }
 
+            const transferableBadge = isTransferable
+                ? `<span class="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 px-2 py-0.5 rounded font-semibold">🔄 Transferible</span>`
+                : '';
+
             info.innerHTML = `
                 <div class="flex items-start justify-between gap-2">
                     <div class="flex-1 min-w-0">
@@ -6972,6 +7041,7 @@ function renderCardsInCollection(cards) {
                             <span class="font-semibold text-gray-900 dark:text-white">${card.name}</span>
                             ${card.quantity > 1 ? `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold">x${card.quantity}</span>` : ''}
                             <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">En colección</span>
+                            ${transferableBadge}
                         </div>
                         <div class="text-xs text-gray-600 dark:text-gray-400">
                             #${card.number} · ${card.set} · ${card.series || 'N/A'} · ${card.language || 'N/A'}
@@ -6988,9 +7058,16 @@ function renderCardsInCollection(cards) {
                                     title="Editar precio personal">✏️</button>
                         </div>
                     </div>
-                    <button class="btn-secondary px-3 py-1.5 rounded text-xs flex-shrink-0" onclick="removeCardFromCollection('${escapedId}')">
-                        Eliminar
-                    </button>
+                    <div class="flex flex-col gap-1 flex-shrink-0 items-end">
+                        <button onclick="toggleCardTransferable('${escapedId}', '${escapedName}', '${escapedImage}', '${escapedSet}', '${escapedCondition}', '${escapedLanguage}', ${card.customPrice != null ? card.customPrice : 'null'}, ${isTransferable})"
+                                class="${isTransferable ? 'bg-purple-500 hover:bg-purple-600 text-white' : 'bg-gray-100 hover:bg-purple-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-purple-900 dark:text-gray-300'} px-3 py-1.5 rounded text-xs font-semibold transition-colors"
+                                title="${isTransferable ? 'Quitar de intercambios' : 'Marcar como disponible para intercambio'}">
+                            ${isTransferable ? '🔄 Transferible' : '🔒 Marcar transferible'}
+                        </button>
+                        <button class="btn-secondary px-3 py-1.5 rounded text-xs" onclick="removeCardFromCollection('${escapedId}')">
+                            Eliminar
+                        </button>
+                    </div>
                 </div>
             `;
         } else {
@@ -7025,6 +7102,10 @@ window.removeCardFromCollection = async (cardId) => {
 
     try {
         await deleteDoc(doc(db, `users/${currentUser.uid}/my_cards/${cardId}`));
+        // Si estaba marcada como transferible, limpiar también el índice global
+        try {
+            await deleteDoc(doc(db, 'transferable_cards', cardId, 'users', currentUser.uid));
+        } catch (_) { /* ignorar si no existía */ }
         showNotification('Carta eliminada de tu colección', 'success', 3000);
 
         // Actualizar ambas vistas: Mis Cartas y Mi Colección del perfil
@@ -10915,6 +10996,11 @@ function renderMyCards(cards) {
 
         const escapedId = cardId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         const escapedName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const escapedSet = setName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const escapedImage = imageUrl.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const escapedCondition = condition.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const escapedLanguage = language.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const isTransferable = !!card.isTransferable;
         const customPriceDisplay = card.customPrice != null
             ? `<span class="text-orange-600 dark:text-orange-400 font-semibold">💰 ${formatTradePrice(card.customPrice)}</span>`
             : `<span class="text-gray-400 dark:text-gray-500 italic">Sin precio personal</span>`;
@@ -10929,12 +11015,17 @@ function renderMyCards(cards) {
             marketPriceHtml = parts.join('<span class="text-gray-400 mx-1">·</span>');
         }
 
+        const transferableBadge = isTransferable
+            ? `<span class="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 px-2 py-0.5 rounded font-semibold">🔄 Transferible</span>`
+            : '';
+
         info.innerHTML = `
             <div class="flex items-start justify-between gap-2">
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="font-semibold text-gray-900 dark:text-white">${name}</span>
                         <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">En colección</span>
+                        ${transferableBadge}
                     </div>
                     <div class="text-xs text-gray-600 dark:text-gray-400">
                         #${number} · ${setName} · ${language} · ${condition}
@@ -10951,9 +11042,16 @@ function renderMyCards(cards) {
                                 title="Editar precio personal">✏️</button>
                     </div>
                 </div>
-                <button class="btn-secondary px-3 py-1.5 rounded text-xs flex-shrink-0" onclick="removeCardFromCollection('${escapedId}')">
-                    Eliminar
-                </button>
+                <div class="flex flex-col gap-1 flex-shrink-0 items-end">
+                    <button onclick="toggleCardTransferable('${escapedId}', '${escapedName}', '${escapedImage}', '${escapedSet}', '${escapedCondition}', '${escapedLanguage}', ${card.customPrice != null ? card.customPrice : 'null'}, ${isTransferable})"
+                            class="${isTransferable ? 'bg-purple-500 hover:bg-purple-600 text-white' : 'bg-gray-100 hover:bg-purple-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-purple-900 dark:text-gray-300'} px-3 py-1.5 rounded text-xs font-semibold transition-colors"
+                            title="${isTransferable ? 'Quitar de intercambios' : 'Marcar como disponible para intercambio'}">
+                        ${isTransferable ? '🔄 Transferible' : '🔒 Marcar transferible'}
+                    </button>
+                    <button class="btn-secondary px-3 py-1.5 rounded text-xs" onclick="removeCardFromCollection('${escapedId}')">
+                        Eliminar
+                    </button>
+                </div>
             </div>
         `;
 
@@ -11344,10 +11442,8 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
         buttonEl.classList.remove('bg-purple-500');
     }
 
-    // Buscar en localStorage (síncrono, pero simulamos asíncrono para mejor UX)
-    setTimeout(() => {
-        const users = getUsersWithCardForTrade(cardName, cardId);
-
+    // Función que renderiza la lista de usuarios
+    function renderUsersPanel(users) {
         if (users.length === 0) {
             panel.innerHTML = `
                 <div class="py-3 px-3 text-sm text-gray-500 dark:text-gray-400 text-center">
@@ -11359,7 +11455,6 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
         }
 
         const usersHTML = users.map(user => {
-            const safeUserId = String(user.userId || '').replace(/[^a-zA-Z0-9]/g, '-');
             const userStats = JSON.parse(localStorage.getItem(`userStats_${user.userId}`) || '{}');
             const ratingHtml = userStats.averageRating
                 ? `${window.displayPokeballRating ? window.displayPokeballRating(userStats.averageRating, false, 'small') : ''}<span class="text-xs text-gray-500 dark:text-gray-400 ml-1">${userStats.averageRating.toFixed(1)}/5</span>`
@@ -11403,7 +11498,42 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
             </div>
         `;
         if (buttonEl) buttonEl.innerHTML = `<span>👥</span><span>Ver usuarios (${users.length})</span>`;
-    }, 50);
+    }
+
+    // Consultar Firestore: colección global de cartas transferibles
+    (async () => {
+        try {
+            const transferUsersRef = collection(db, 'transferable_cards', cardId, 'users');
+            const snapshot = await getDocs(transferUsersRef);
+            const firestoreUsers = [];
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                // Excluir al usuario actual
+                if (currentUser && data.userId === currentUser.uid) return;
+                firestoreUsers.push({
+                    userId: data.userId,
+                    userName: data.userName || 'Usuario',
+                    customPrice: data.customPrice ?? null,
+                    condition: data.condition || null,
+                    language: data.language || null,
+                    cardImage: data.imageUrl || null
+                });
+            });
+
+            // Combinar con resultados de localStorage (intercambios creados manualmente)
+            const localUsers = getUsersWithCardForTrade(cardName, cardId);
+            // Añadir usuarios de localStorage que no estén ya en Firestore
+            const seenIds = new Set(firestoreUsers.map(u => u.userId));
+            localUsers.forEach(u => {
+                if (!seenIds.has(u.userId)) firestoreUsers.push(u);
+            });
+
+            renderUsersPanel(firestoreUsers);
+        } catch (e) {
+            console.warn('Error al buscar usuarios en Firestore, usando localStorage:', e);
+            renderUsersPanel(getUsersWithCardForTrade(cardName, cardId));
+        }
+    })();
 };
 
 // Abre el modal de creación de intercambio con la carta buscada ya pre-cargada en la sección "Cartas que Busco"
