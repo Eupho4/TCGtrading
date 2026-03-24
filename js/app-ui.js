@@ -76,6 +76,94 @@ let currentUser = null;
 let allSets = []; // Cache para todos los sets de la API
 let userCardsCache = []; // Cache para las cartas del usuario
 
+// Cache de precios para cartas en intercambios
+const tradePriceCache = new Map();
+
+// Obtener precio de una carta por ID o nombre
+async function fetchCardPrice(cardId, cardName) {
+    const cacheKey = cardId || cardName;
+    if (!cacheKey) return null;
+    if (tradePriceCache.has(cacheKey)) return tradePriceCache.get(cacheKey);
+    try {
+        const query = cardId || cardName;
+        const response = await fetch(`/api/pokemontcg/cards?q=${encodeURIComponent(query)}&pageSize=5`);
+        const data = await response.json();
+        let card = null;
+        if (data.data && data.data.length > 0) {
+            card = cardId ? (data.data.find(c => c.id === cardId) || data.data[0]) : data.data[0];
+        }
+        let prices = null;
+        if (card) {
+            const cmPrice = card.cardmarket?.prices?.averageSellPrice || card.cardmarket?.prices?.avg1 || null;
+            const tcgPrice = card.tcgplayer?.prices?.normal?.market || card.tcgplayer?.prices?.holofoil?.market || null;
+            if (cmPrice !== null || tcgPrice !== null) {
+                prices = { cardmarket: cmPrice, tcgplayer: tcgPrice };
+            }
+        }
+        tradePriceCache.set(cacheKey, prices);
+        return prices;
+    } catch (e) {
+        console.warn('No se pudo obtener precio para carta:', cardId || cardName);
+        tradePriceCache.set(cacheKey, null);
+        return null;
+    }
+}
+
+// Formatear precio en euros
+function formatTradePrice(price) {
+    return new Intl.NumberFormat('es-ES', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(price);
+}
+
+// Cargar precios para todos los elementos [data-card-price] dentro de un contenedor
+async function loadTradeCardPrices(container) {
+    const priceElements = container.querySelectorAll('[data-card-price]');
+    if (priceElements.length === 0) return;
+    const fetchPromises = Array.from(priceElements).map(async (el) => {
+        const cardId = el.dataset.cardId;
+        const cardName = el.dataset.cardName;
+        const prices = await fetchCardPrice(cardId, cardName);
+        if (prices && (prices.cardmarket || prices.tcgplayer)) {
+            el.innerHTML = `
+                <div class="flex flex-col gap-0.5 mt-1">
+                    ${prices.cardmarket ? `<span class="text-[10px] font-medium text-green-600 dark:text-green-400">💳 ${formatTradePrice(prices.cardmarket)}</span>` : ''}
+                    ${prices.tcgplayer ? `<span class="text-[10px] font-medium text-blue-600 dark:text-blue-400">🎮 $${prices.tcgplayer.toFixed(2)}</span>` : ''}
+                </div>`;
+        } else {
+            el.innerHTML = '';
+        }
+    });
+    await Promise.all(fetchPromises);
+}
+
+// Seleccionar carta de la colección del usuario para un intercambio (mantiene condición/idioma)
+window.selectCollectionCardForTrade = function(type, cardIndex, cardId, cardName, cardImage, setName, cardNumber, language, condition) {
+    const containerId = type === 'offered' ? 'offeredCardsContainer' : 'wantedCardsContainer';
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const cardElement = container.querySelectorAll('.trade-card')[cardIndex];
+    if (cardElement) {
+        const conditionSelect = cardElement.querySelector(`select[name="${type}_condition_${cardIndex}"]`);
+        if (conditionSelect) conditionSelect.value = condition || 'NM';
+        const languageSelect = cardElement.querySelector(`select[name="${type}_language_${cardIndex}"]`);
+        if (languageSelect) {
+            for (let i = 0; i < languageSelect.options.length; i++) {
+                if (languageSelect.options[i].value === language) {
+                    languageSelect.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        const fromMyCardsInput = cardElement.querySelector(`input[name="${type}_fromMyCards_${cardIndex}"]`);
+        if (fromMyCardsInput) fromMyCardsInput.value = 'true';
+    }
+    selectCardForTrade(type, cardIndex, cardId, cardName, cardImage, setName, cardNumber, true);
+};
+
 // Variables para migración y sincronización
 let dataMigration = null;
 let dataSync = null;
@@ -1180,6 +1268,61 @@ window.searchCardForTrade = async function (input, type, cardIndex) {
             `;
     resultsContainer.classList.remove('hidden');
 
+    // Para cartas ofrecidas, buscar solo en la colección del usuario
+    if (type === 'offered') {
+        // Cargar colección si no está en caché
+        if (!userCardsCache || userCardsCache.length === 0) {
+            if (!currentUser) {
+                resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">Inicia sesión para buscar en tu colección</div>`;
+                return;
+            }
+            try {
+                const myCardsCollectionRef = collection(db, `users/${currentUser.uid}/my_cards`);
+                const querySnapshot = await getDocs(myCardsCollectionRef);
+                userCardsCache = [];
+                querySnapshot.forEach(doc => {
+                    userCardsCache.push({ id: doc.id, ...doc.data() });
+                });
+            } catch (error) {
+                console.error('Error cargando cartas:', error);
+                resultsContainer.innerHTML = `<div class="p-3 text-center text-red-500">Error al cargar tu colección</div>`;
+                setTimeout(() => resultsContainer.classList.add('hidden'), 3000);
+                return;
+            }
+        }
+
+        if (userCardsCache.length === 0) {
+            resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">No tienes cartas en tu colección. Añade cartas primero.</div>`;
+            return;
+        }
+
+        // Filtrar colección por la búsqueda
+        const queryLower = query.toLowerCase();
+        const matchingCards = userCardsCache.filter(card =>
+            (card.name || '').toLowerCase().includes(queryLower) ||
+            (card.set || '').toLowerCase().includes(queryLower)
+        ).slice(0, 10);
+
+        const escapeForOnclick = (str) => String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+
+        if (matchingCards.length > 0) {
+            resultsContainer.innerHTML = matchingCards.map(card => `
+                <div class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex items-center gap-2 border-b border-gray-200 dark:border-gray-600 last:border-0"
+                     onclick="selectCollectionCardForTrade('${type}', ${cardIndex}, '${escapeForOnclick(card.id)}', '${escapeForOnclick(card.name)}', '${escapeForOnclick(card.imageUrl || '')}', '${escapeForOnclick(card.set || '')}', '${escapeForOnclick(card.number || '')}', '${escapeForOnclick(card.language || 'Español')}', '${escapeForOnclick(card.condition || 'NM')}')">
+                    ${card.imageUrl ? `<img src="${card.imageUrl}" alt="${card.name}" class="w-10 h-14 object-contain rounded">` : '<div class="w-10 h-14 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded"><span>🎴</span></div>'}
+                    <div class="flex-1">
+                        <div class="font-medium text-sm text-gray-900 dark:text-white">${card.name || 'Sin nombre'}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">${card.set || 'Set desconocido'} • #${card.number || 'N/A'} • ${CARD_CONDITIONS[card.condition]?.icon || ''} ${card.condition || 'NM'} • ${card.language || 'Español'}</div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">No tienes esta carta en tu colección</div>`;
+        }
+        return;
+    }
+
+    // Para cartas buscadas, buscar en la API completa
     // Debounce de 300ms
     searchTimeout = setTimeout(async () => {
         try {
@@ -2135,11 +2278,14 @@ function displayTrades(trades, containerId) {
                                 <div class="space-y-2">
                                     ${displayOffered.map(card => `
                                         <div class="flex items-center justify-between bg-white dark:bg-gray-600 px-3 py-2 rounded border border-gray-200 dark:border-gray-500">
-                                            <div class="flex items-center gap-2 flex-1">
-                                                ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded">` : ''}
-                                                <span class="text-sm text-gray-700 dark:text-gray-200">${card.name || card}</span>
+                                            <div class="flex items-center gap-2 flex-1 min-w-0">
+                                                ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded flex-shrink-0">` : ''}
+                                                <div class="flex-1 min-w-0">
+                                                    <span class="text-sm text-gray-700 dark:text-gray-200 block truncate">${card.name || card}</span>
+                                                    <div data-card-price data-card-id="${card.id || ''}" data-card-name="${card.name || ''}"></div>
+                                                </div>
                                             </div>
-                                            <div class="flex items-center space-x-2">
+                                            <div class="flex items-center space-x-2 flex-shrink-0">
                                                 <span class="text-xs px-2 py-1 rounded-full text-white font-medium" 
                                                       style="background-color: ${CARD_CONDITIONS[card.condition || 'NM'].color}">
                                                     ${CARD_CONDITIONS[card.condition || 'NM'].icon} ${card.condition || 'NM'}
@@ -2155,11 +2301,14 @@ function displayTrades(trades, containerId) {
                                 <div class="space-y-2">
                                     ${displayWanted.map(card => `
                                         <div class="flex items-center justify-between bg-white dark:bg-gray-600 px-3 py-2 rounded border border-gray-200 dark:border-gray-500">
-                                            <div class="flex items-center gap-2 flex-1">
-                                                ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded">` : ''}
-                                                <span class="text-sm text-gray-700 dark:text-gray-200">${card.name || card}</span>
+                                            <div class="flex items-center gap-2 flex-1 min-w-0">
+                                                ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-8 h-11 object-contain rounded flex-shrink-0">` : ''}
+                                                <div class="flex-1 min-w-0">
+                                                    <span class="text-sm text-gray-700 dark:text-gray-200 block truncate">${card.name || card}</span>
+                                                    <div data-card-price data-card-id="${card.id || ''}" data-card-name="${card.name || ''}"></div>
+                                                </div>
                                             </div>
-                                            <div class="flex items-center space-x-2">
+                                            <div class="flex items-center space-x-2 flex-shrink-0">
                                                 <span class="text-xs px-2 py-1 rounded-full text-white font-medium" 
                                                       style="background-color: ${CARD_CONDITIONS[card.condition || 'NM'].color}">
                                                     ${CARD_CONDITIONS[card.condition || 'NM'].icon} ${card.condition || 'NM'}
@@ -2213,6 +2362,7 @@ function displayTrades(trades, containerId) {
     });
 
     container.innerHTML = tradesHTML;
+    loadTradeCardPrices(container);
 }
 
 // Función para formatear fechas
@@ -2728,6 +2878,61 @@ window.searchProposalCard = async function (input, uniqueId) {
             `;
     resultsContainer.classList.remove('hidden');
 
+    // Determinar si es una carta ofrecida (solo de la colección del usuario)
+    const isOffered = uniqueId.startsWith('proposal_offered_');
+
+    if (isOffered) {
+        // Para cartas ofrecidas en propuesta, buscar solo en la colección del usuario
+        if (!userCardsCache || userCardsCache.length === 0) {
+            if (!currentUser) {
+                resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">Inicia sesión para buscar en tu colección</div>`;
+                return;
+            }
+            try {
+                const myCardsCollectionRef = collection(db, `users/${currentUser.uid}/my_cards`);
+                const querySnapshot = await getDocs(myCardsCollectionRef);
+                userCardsCache = [];
+                querySnapshot.forEach(doc => {
+                    userCardsCache.push({ id: doc.id, ...doc.data() });
+                });
+            } catch (error) {
+                console.error('Error cargando cartas:', error);
+                resultsContainer.innerHTML = `<div class="p-3 text-center text-red-500">Error al cargar tu colección</div>`;
+                setTimeout(() => resultsContainer.classList.add('hidden'), 3000);
+                return;
+            }
+        }
+
+        if (userCardsCache.length === 0) {
+            resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">No tienes cartas en tu colección</div>`;
+            return;
+        }
+
+        const queryLower = query.toLowerCase();
+        const matchingCards = userCardsCache.filter(card =>
+            (card.name || '').toLowerCase().includes(queryLower) ||
+            (card.set || '').toLowerCase().includes(queryLower)
+        ).slice(0, 10);
+
+        const escapeForOnclick = (str) => String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+
+        if (matchingCards.length > 0) {
+            resultsContainer.innerHTML = matchingCards.map(card => `
+                <div class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex items-center gap-2 border-b border-gray-200 dark:border-gray-600 last:border-0"
+                     onclick="selectProposalCardFromCollection('${uniqueId}', '${escapeForOnclick(card.id)}', '${escapeForOnclick(card.name)}', '${escapeForOnclick(card.imageUrl || '')}', '${escapeForOnclick(card.set || '')}', '${escapeForOnclick(card.number || '')}', '${escapeForOnclick(card.language || 'Español')}', '${escapeForOnclick(card.condition || 'NM')}')">
+                    ${card.imageUrl ? `<img src="${card.imageUrl}" alt="${card.name}" class="w-10 h-14 object-contain rounded">` : '<div class="w-10 h-14 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded"><span>🎴</span></div>'}
+                    <div class="flex-1">
+                        <div class="font-medium text-sm text-gray-900 dark:text-white">${card.name || 'Sin nombre'}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">${card.set || 'Set desconocido'} • #${card.number || 'N/A'} • ${CARD_CONDITIONS[card.condition]?.icon || ''} ${card.condition || 'NM'} • ${card.language || 'Español'}</div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">No tienes esta carta en tu colección</div>`;
+        }
+        return;
+    }
+
     // Debounce de 500ms
     proposalSearchTimeout = setTimeout(async () => {
         try {
@@ -2841,6 +3046,29 @@ window.selectProposalCard = function (uniqueId, cardId, cardName, cardImage, set
     const resultsContainer = nameInput?.parentElement?.querySelector('.proposal-search-results');
     if (resultsContainer) {
         resultsContainer.classList.add('hidden');
+    }
+};
+
+// Seleccionar carta de la colección del usuario en el modal de propuesta
+window.selectProposalCardFromCollection = function (uniqueId, cardId, cardName, cardImage, setName, cardNumber, language, condition) {
+    // Llenar los datos de la carta (imagen, nombre, campos ocultos)
+    selectProposalCard(uniqueId, cardId, cardName, cardImage, setName, cardNumber);
+
+    const cardElement = document.querySelector(`[data-unique-id="${uniqueId}"]`);
+    if (!cardElement) return;
+
+    // Establecer condición e idioma de la carta de la colección
+    const conditionSelect = cardElement.querySelector(`select[name="${uniqueId}_condition"]`);
+    if (conditionSelect) conditionSelect.value = condition || 'NM';
+
+    const languageSelect = cardElement.querySelector(`select[name="${uniqueId}_language"]`);
+    if (languageSelect) {
+        for (let i = 0; i < languageSelect.options.length; i++) {
+            if (languageSelect.options[i].value === language) {
+                languageSelect.selectedIndex = i;
+                break;
+            }
+        }
     }
 };
 
@@ -4494,6 +4722,8 @@ function generateTradeCardHTML(cards) {
                         🌐 ${card.language || 'Español'}
                     </span>
                 </div>
+                <!-- Precio (cargado dinámicamente) -->
+                <div class="text-center" data-card-price data-card-id="${card.id || ''}" data-card-name="${card.name || ''}"></div>
             </div>
         </div>
     `).join('');
@@ -4695,6 +4925,9 @@ function viewTradeDetails(tradeId) {
             `;
 
     document.body.appendChild(modal);
+
+    // Cargar precios de las cartas en la vista de detalles
+    loadTradeCardPrices(modal);
 
     // Cerrar con ESC o click fuera
     modal.addEventListener('click', (e) => {
