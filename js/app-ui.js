@@ -160,6 +160,77 @@ async function loadCollectionMarketPrices(container) {
     await Promise.all(fetchPromises);
 }
 
+// ── Balance / diferencia de valor del intercambio ───────────────────────────
+
+// Resolves the best available EUR price for a single trade card
+async function resolveCardPrice(card) {
+    if (card.customPrice != null) return card.customPrice;
+    const prices = await fetchCardPrice(card.id, card.name);
+    return prices?.cardmarket ?? null;
+}
+
+// Calculates and renders the trade value balance into a given DOM element.
+// offeredCards: cards the trade owner offers
+// wantedCards:  cards the trade owner wants
+async function renderTradeBalance(balanceEl, offeredCards, wantedCards) {
+    if (!balanceEl) return;
+
+    const offered = offeredCards || [];
+    const wanted  = wantedCards  || [];
+
+    const [offeredPrices, wantedPrices] = await Promise.all([
+        Promise.all(offered.map(resolveCardPrice)),
+        Promise.all(wanted.map(resolveCardPrice))
+    ]);
+
+    const offeredKnown = offeredPrices.filter(p => p !== null);
+    const wantedKnown  = wantedPrices.filter(p => p !== null);
+
+    if (offeredKnown.length === 0 && wantedKnown.length === 0) {
+        balanceEl.innerHTML = '<p class="text-xs text-gray-400 italic text-center">Sin precios disponibles para calcular el balance</p>';
+        return;
+    }
+
+    // Work in cents to avoid floating-point precision issues
+    const offeredCents = offeredKnown.reduce((a, b) => a + Math.round(b * 100), 0);
+    const wantedCents  = wantedKnown.reduce((a, b) => a + Math.round(b * 100), 0);
+    const diffCents    = offeredCents - wantedCents;
+    // Convert back to EUR for display
+    const offeredTotal = offeredCents / 100;
+    const wantedTotal  = wantedCents  / 100;
+    const diff         = diffCents    / 100;
+    const hasPartialPrices = offeredKnown.length < offered.length || wantedKnown.length < wanted.length;
+
+    let icon, diffLabel, colorClass;
+    if (diffCents === 0) {
+        icon = '⚖️';
+        diffLabel = 'Intercambio equilibrado';
+        colorClass = 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-800 dark:text-green-200';
+    } else if (diffCents > 0) {
+        // Offered side is worth more → person wanting the cards should add cash
+        icon = '📤';
+        diffLabel = `Quien solicita las cartas debería compensar con <strong>${formatTradePrice(diff)}</strong>`;
+        colorClass = 'bg-orange-50 dark:bg-orange-900/20 border-orange-300 dark:border-orange-700 text-orange-800 dark:text-orange-200';
+    } else {
+        // Wanted side is worth more → person offering should add cash
+        icon = '📥';
+        diffLabel = `Quien ofrece las cartas debería compensar con <strong>${formatTradePrice(Math.abs(diff))}</strong>`;
+        colorClass = 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-200';
+    }
+
+    balanceEl.innerHTML = `
+        <div class="flex flex-wrap items-center gap-3 px-4 py-3 rounded-lg border text-sm font-medium ${colorClass}">
+            <span class="text-base">${icon}</span>
+            <span>${diffLabel}</span>
+            <span class="ml-auto flex gap-3 text-xs opacity-80 font-normal">
+                <span>📤 Ofrecido: <strong>${formatTradePrice(offeredTotal)}</strong></span>
+                <span>📥 Buscado: <strong>${formatTradePrice(wantedTotal)}</strong></span>
+            </span>
+            ${hasPartialPrices ? '<span class="text-xs opacity-60 w-full">(algunos precios no disponibles — balance estimado)</span>' : ''}
+        </div>
+    `;
+}
+
 // ── Precio personalizado por carta ──────────────────────────────────────────
 
 // Guardar/actualizar el precio personal de una carta en Firestore y caché
@@ -2432,6 +2503,11 @@ function displayTrades(trades, containerId) {
                             </div>
                         </div>
                         
+                        <!-- Balance de valor del intercambio -->
+                        <div class="mt-3 mb-2" data-trade-balance="${trade.id}">
+                            <p class="text-xs text-gray-400 italic text-center">Calculando balance…</p>
+                        </div>
+                        
                         <div class="flex justify-between items-center">
                             <span class="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-400">Por: ${trade.user}</span>
                             <div class="flex space-x-2">
@@ -2474,6 +2550,13 @@ function displayTrades(trades, containerId) {
 
     container.innerHTML = tradesHTML;
     loadTradeCardPrices(container);
+    // Render balance for each trade asynchronously
+    trades.forEach(trade => {
+        const balanceEl = container.querySelector(`[data-trade-balance="${trade.id}"]`);
+        const displayOffered = trade.finalOfferedCards || trade.offeredCards;
+        const displayWanted  = trade.finalWantedCards  || trade.wantedCards;
+        renderTradeBalance(balanceEl, displayOffered, displayWanted);
+    });
 }
 
 // Función para formatear fechas
@@ -4956,6 +5039,11 @@ function viewTradeDetails(tradeId) {
                             </div>
                         </div>
                         
+                        <!-- Balance de valor del intercambio -->
+                        <div id="tradeDetailBalance" class="mx-0 mb-6 px-0 pt-2">
+                            <p class="text-xs text-gray-400 italic text-center">Calculando balance de valor…</p>
+                        </div>
+                        
                         <!-- Description -->
                         ${trade.description ? `
                             <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6">
@@ -5044,6 +5132,10 @@ function viewTradeDetails(tradeId) {
 
     // Cargar precios de las cartas en la vista de detalles
     loadTradeCardPrices(modal);
+
+    // Calcular y mostrar balance de valor del intercambio
+    const balanceEl = modal.querySelector('#tradeDetailBalance');
+    renderTradeBalance(balanceEl, displayOffered, displayWanted);
 
     // Cerrar con ESC o click fuera
     modal.addEventListener('click', (e) => {
