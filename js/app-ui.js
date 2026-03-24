@@ -94,8 +94,8 @@ async function fetchCardPrice(cardId, cardName) {
         }
         let prices = null;
         if (card) {
-            const cmPrice = card.cardmarket?.prices?.averageSellPrice || card.cardmarket?.prices?.avg1 || null;
-            const tcgPrice = card.tcgplayer?.prices?.normal?.market || card.tcgplayer?.prices?.holofoil?.market || null;
+            const cmPrice = card.cardmarket?.avg30 || card.cardmarket?.avg1 || card.cardmarket?.avg || null;
+            const tcgPrice = card.tcgplayer?.normal?.marketPrice || card.tcgplayer?.holofoil?.marketPrice || null;
             if (cmPrice !== null || tcgPrice !== null) {
                 prices = { cardmarket: cmPrice, tcgplayer: tcgPrice };
             }
@@ -9794,8 +9794,12 @@ function generateCardDetailsHTML(card) {
     const safeCardId = (card.id || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
 
     // Obtener precios si están disponibles
-    const tcgplayerPrices = card.tcgplayer?.prices || {};
-    const cardmarketPrices = card.cardmarket?.prices || {};
+    const tcgplayerMetaFields = ['unit', 'updated', 'idProduct'];
+    const tcgplayerConditions = Object.fromEntries(
+        Object.entries(card.tcgplayer || {}).filter(([k]) => !tcgplayerMetaFields.includes(k))
+    );
+    const cardmarketData = card.cardmarket || {};
+    const hasCardmarketPrices = (cardmarketData.avg30 || cardmarketData.avg1 || cardmarketData.avg) ? true : false;
 
     // Función para formatear precios
     const formatPrice = (price) => price ? `$${parseFloat(price).toFixed(2)}` : 'N/A';
@@ -9937,14 +9941,14 @@ function generateCardDetailsHTML(card) {
                         ` : ''}
                         
                         <!-- Precios -->
-                        ${(Object.keys(tcgplayerPrices).length > 0 || Object.keys(cardmarketPrices).length > 0) ? `
+                        ${(Object.keys(tcgplayerConditions).length > 0 || hasCardmarketPrices) ? `
                         <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
                             <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center">
                                 <span class="mr-2">💰</span>
                                 Precios de Mercado
                             </h3>
                             <div class="space-y-4">
-                                ${Object.keys(tcgplayerPrices).length > 0 ? `
+                                ${Object.keys(tcgplayerConditions).length > 0 ? `
                                 <div>
                                     <div class="flex items-center mb-2">
                                         <div class="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center mr-2">
@@ -9953,14 +9957,14 @@ function generateCardDetailsHTML(card) {
                                         <h4 class="font-semibold text-gray-800 dark:text-gray-200">TCGPlayer</h4>
                                     </div>
                                     <div class="grid grid-cols-1 gap-2">
-                                        ${Object.entries(tcgplayerPrices).map(([condition, prices]) => `
+                                        ${Object.entries(tcgplayerConditions).map(([condition, prices]) => `
                                             <div class="bg-gray-50 dark:bg-gray-700 rounded p-3">
                                                 <div class="font-semibold text-gray-700 dark:text-gray-300 mb-1 capitalize text-sm">${condition}</div>
                                                 <div class="space-y-1 text-xs">
-                                                    ${prices.low ? `<div class="flex justify-between"><span class="text-gray-500">Bajo:</span><span class="font-semibold text-green-600">${formatPrice(prices.low)}</span></div>` : ''}
-                                                    ${prices.mid ? `<div class="flex justify-between"><span class="text-gray-500">Medio:</span><span class="font-semibold text-blue-600">${formatPrice(prices.mid)}</span></div>` : ''}
-                                                    ${prices.high ? `<div class="flex justify-between"><span class="text-gray-500">Alto:</span><span class="font-semibold text-red-600">${formatPrice(prices.high)}</span></div>` : ''}
-                                                    ${prices.market ? `<div class="flex justify-between"><span class="text-gray-500">Mercado:</span><span class="font-semibold text-purple-600">${formatPrice(prices.market)}</span></div>` : ''}
+                                                    ${prices.lowPrice ? `<div class="flex justify-between"><span class="text-gray-500">Bajo:</span><span class="font-semibold text-green-600">${formatPrice(prices.lowPrice)}</span></div>` : ''}
+                                                    ${prices.midPrice ? `<div class="flex justify-between"><span class="text-gray-500">Medio:</span><span class="font-semibold text-blue-600">${formatPrice(prices.midPrice)}</span></div>` : ''}
+                                                    ${prices.highPrice ? `<div class="flex justify-between"><span class="text-gray-500">Alto:</span><span class="font-semibold text-red-600">${formatPrice(prices.highPrice)}</span></div>` : ''}
+                                                    ${prices.marketPrice ? `<div class="flex justify-between"><span class="text-gray-500">Mercado:</span><span class="font-semibold text-purple-600">${formatPrice(prices.marketPrice)}</span></div>` : ''}
                                                 </div>
                                             </div>
                                         `).join('')}
@@ -9968,7 +9972,7 @@ function generateCardDetailsHTML(card) {
                                 </div>
                                 ` : ''}
                                 
-                                ${Object.keys(cardmarketPrices).length > 0 ? `
+                                ${hasCardmarketPrices ? `
                                 <div>
                                     <div class="flex items-center mb-2">
                                         <div class="w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center mr-2">
@@ -9978,9 +9982,9 @@ function generateCardDetailsHTML(card) {
                                     </div>
                                     <div class="bg-gray-50 dark:bg-gray-700 rounded p-3">
                                         <div class="grid grid-cols-3 gap-2 text-xs">
-                                            ${cardmarketPrices.averageSellPrice ? `<div class="text-center"><div class="text-gray-500">Promedio</div><div class="font-semibold text-green-600">${formatPrice(cardmarketPrices.averageSellPrice)}</div></div>` : ''}
-                                            ${cardmarketPrices.lowPrice ? `<div class="text-center"><div class="text-gray-500">Bajo</div><div class="font-semibold text-blue-600">${formatPrice(cardmarketPrices.lowPrice)}</div></div>` : ''}
-                                            ${cardmarketPrices.trendPrice ? `<div class="text-center"><div class="text-gray-500">Tendencia</div><div class="font-semibold text-purple-600">${formatPrice(cardmarketPrices.trendPrice)}</div></div>` : ''}
+                                            ${cardmarketData.avg30 ? `<div class="text-center"><div class="text-gray-500">Prom. 30d</div><div class="font-semibold text-green-600">${formatPrice(cardmarketData.avg30)}</div></div>` : ''}
+                                            ${cardmarketData.avg1 ? `<div class="text-center"><div class="text-gray-500">Prom. 1d</div><div class="font-semibold text-blue-600">${formatPrice(cardmarketData.avg1)}</div></div>` : ''}
+                                            ${cardmarketData.trend ? `<div class="text-center"><div class="text-gray-500">Tendencia</div><div class="font-semibold text-purple-600">${formatPrice(cardmarketData.trend)}</div></div>` : ''}
                                         </div>
                                     </div>
                                 </div>
@@ -11155,7 +11159,7 @@ function renderCardsFromData(cards) {
             return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(price);
         };
         const cardmarketPrice = card.cardmarket?.avg30 || card.cardmarket?.avg1 || card.cardmarket?.avg || null;
-        const tcgplayerPrice = card.tcgplayer?.normal?.market || card.tcgplayer?.holofoil?.market || null;
+        const tcgplayerPrice = card.tcgplayer?.normal?.marketPrice || card.tcgplayer?.holofoil?.marketPrice || null;
 
         const info = document.createElement('div');
         info.className = 'flex-1 min-w-0 pl-16';

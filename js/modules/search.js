@@ -256,8 +256,8 @@ function createCardGridItem(card) {
         return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(price);
     };
     
-    const cardmarketPrice = card.cardmarket?.prices?.averageSellPrice || card.cardmarket?.prices?.avg1 || null;
-    const tcgplayerPrice = card.tcgplayer?.prices?.normal?.market || card.tcgplayer?.prices?.holofoil?.market || null;
+    const cardmarketPrice = card.cardmarket?.avg30 || card.cardmarket?.avg1 || card.cardmarket?.avg || null;
+    const tcgplayerPrice = card.tcgplayer?.normal?.marketPrice || card.tcgplayer?.holofoil?.marketPrice || null;
     
     return `
         <div class="card-bg rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
@@ -333,8 +333,8 @@ function createCardListItem(card) {
         return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(price);
     };
     
-    const cardmarketPrice = card.cardmarket?.prices?.averageSellPrice || card.cardmarket?.prices?.avg1 || null;
-    const tcgplayerPrice = card.tcgplayer?.prices?.normal?.market || card.tcgplayer?.prices?.holofoil?.market || null;
+    const cardmarketPrice = card.cardmarket?.avg30 || card.cardmarket?.avg1 || card.cardmarket?.avg || null;
+    const tcgplayerPrice = card.tcgplayer?.normal?.marketPrice || card.tcgplayer?.holofoil?.marketPrice || null;
     
     return `
         <div class="card-bg rounded-lg shadow-lg p-4 flex gap-4 hover:shadow-xl transition-all duration-300">
