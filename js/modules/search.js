@@ -279,7 +279,7 @@ function createCardGridItem(card) {
                         #${cardNumber} • ${card.rarity || 'Common'}
                     </span>
                     ${offerCount > 0 ? `
-                        <button onclick="showCardOffers('${safeCardName}', '${safeImageUrl}')" 
+                        <button onclick="showCardOffers('${safeCardName}', '${safeSetName}', '${safeImageUrl}')" 
                                 class="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-full text-xs font-semibold hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors">
                             ${offerCount} Ofrecida${offerCount > 1 ? 's' : ''}
                         </button>
@@ -372,7 +372,7 @@ function createCardListItem(card) {
                         Añadir a Colección
                     </button>
                     ${offerCount > 0 ? `
-                        <button onclick="showCardOffers('${safeCardName}', '${safeImageUrl}')" 
+                        <button onclick="showCardOffers('${safeCardName}', '${safeSetName}', '${safeImageUrl}')" 
                                 class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors">
                             Ver ${offerCount} Oferta${offerCount > 1 ? 's' : ''}
                         </button>

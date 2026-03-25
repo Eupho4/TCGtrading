@@ -453,7 +453,7 @@ let profileEmailDisplay, profileUidDisplay, profileMemberSince, profileLoginRequ
 let profileNameInput, profileLastNameInput, profileAddressInput, profilePhoneInput, profileSaveMessage, saveProfileBtn;
 let settingsNewEmailInput, emailChangeMessage, saveEmailBtn;
 let settingsCurrentPasswordInput, settingsNewPasswordInput, settingsConfirmNewPasswordInput, passwordChangeMessage, savePasswordBtn;
-let darkModeToggle, interchangesSection, helpSection;
+let darkModeToggle, interchangesSection, helpSection, cardOffersSection;
 
 // Token de autenticación inicial (si existe)
 const initialAuthToken = null; // Puedes configurar esto si tienes un token personalizado
@@ -497,6 +497,7 @@ function showInitialSections() {
     if (profileSection) profileSection.classList.add('hidden');
     if (interchangesSection) interchangesSection.classList.add('hidden');
     if (helpSection) helpSection.classList.add('hidden');
+    if (cardOffersSection) cardOffersSection.classList.add('hidden');
 
     // Ocultar también el buzón
     const inboxSection = document.getElementById('inboxSection');
@@ -512,6 +513,7 @@ function showSearchResults() {
     if (profileSection) profileSection.classList.add('hidden');
     if (interchangesSection) interchangesSection.classList.add('hidden');
     if (helpSection) helpSection.classList.add('hidden');
+    if (cardOffersSection) cardOffersSection.classList.add('hidden');
 
     // Ocultar también el buzón
     const inboxSection = document.getElementById('inboxSection');
@@ -529,6 +531,7 @@ function showInboxSection() {
     if (profileSection) profileSection.classList.add('hidden');
     if (helpSection) helpSection.classList.add('hidden');
     if (interchangesSection) interchangesSection.classList.add('hidden');
+    if (cardOffersSection) cardOffersSection.classList.add('hidden');
 
     // Mostrar sección del buzón
     const inboxSection = document.getElementById('inboxSection');
@@ -547,6 +550,7 @@ function showMyCardsSection() {
     if (profileSection) profileSection.classList.add('hidden');
     if (interchangesSection) interchangesSection.classList.add('hidden');
     if (helpSection) helpSection.classList.add('hidden');
+    if (cardOffersSection) cardOffersSection.classList.add('hidden');
 
     // Ocultar también el buzón
     const inboxSection = document.getElementById('inboxSection');
@@ -574,6 +578,7 @@ function showInterchangesSection() {
     if (myCardsSection) myCardsSection.classList.add('hidden');
     if (profileSection) profileSection.classList.add('hidden');
     if (helpSection) helpSection.classList.add('hidden');
+    if (cardOffersSection) cardOffersSection.classList.add('hidden');
 
     // Ocultar también el buzón
     const inboxSection = document.getElementById('inboxSection');
@@ -608,6 +613,7 @@ function showHelpSection(tabToShow = null) {
     if (myCardsSection) myCardsSection.classList.add('hidden');
     if (profileSection) profileSection.classList.add('hidden');
     if (interchangesSection) interchangesSection.classList.add('hidden');
+    if (cardOffersSection) cardOffersSection.classList.add('hidden');
 
     // Ocultar también el buzón
     const inboxSection = document.getElementById('inboxSection');
@@ -647,6 +653,7 @@ function showProfileSection() {
     if (myCardsSection) myCardsSection.classList.add('hidden');
     if (interchangesSection) interchangesSection.classList.add('hidden');
     if (helpSection) helpSection.classList.add('hidden');
+    if (cardOffersSection) cardOffersSection.classList.add('hidden');
 
     // Ocultar también el buzón
     const inboxSection = document.getElementById('inboxSection');
@@ -2233,7 +2240,191 @@ function getCardOfferDetails(cardName, cardSet) {
     return offers;
 }
 
-// Función para mostrar el modal con las ofertas de una carta
+// Umbral a partir del cual se usa la página dedicada en lugar del modal
+const CARD_OFFERS_PAGE_THRESHOLD = 5;
+
+// Genera el HTML de una oferta individual (reutilizado en modal y página)
+function buildOfferCardHTML(offer) {
+    return `
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4 border border-gray-200 dark:border-gray-600">
+            <div class="flex justify-between items-start mb-3">
+                <div>
+                    <h4 class="font-semibold text-gray-800 dark:text-white">${offer.title || 'Intercambio sin título'}</h4>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Por: <span class="font-medium">${offer.user}</span></p>
+                </div>
+                <span class="text-xs text-gray-500 dark:text-gray-400">
+                    ${offer.createdAt ? new Date(offer.createdAt).toLocaleDateString('es-ES') : 'Fecha no disponible'}
+                </span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📤 Ofrece:</h5>
+                    <div class="space-y-1">
+                        ${offer.offeredCards.map(card => `
+                            <div class="bg-white dark:bg-gray-600 px-2 py-1 rounded text-xs flex items-center gap-1">
+                                ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-6 h-8 object-contain">` : ''}
+                                <span class="text-gray-700 dark:text-gray-200">${card.name || card}</span>
+                                ${card.condition ? `<span class="ml-2 text-gray-500 dark:text-gray-400">(${card.condition})</span>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div>
+                    <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📥 Busca:</h5>
+                    <div class="space-y-1">
+                        ${offer.wantedCards.map(card => `
+                            <div class="bg-white dark:bg-gray-600 px-2 py-1 rounded text-xs flex items-center gap-1">
+                                ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-6 h-8 object-contain">` : ''}
+                                <span class="text-gray-700 dark:text-gray-200">${card.name || card}</span>
+                                ${card.condition ? `<span class="ml-2 text-gray-500 dark:text-gray-400">(${card.condition})</span>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3 flex justify-end">
+                <button class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1 rounded text-sm"
+                        onclick="alert('Función de contacto en desarrollo')">
+                    💬 Contactar
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// Función para mostrar el modal con las ofertas de una carta (usado cuando hay pocas ofertas)
+function showCardOffersModal(cardName, cardImageUrl, offers) {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+    modal.onclick = function (e) {
+        if (e.target === modal) modal.remove();
+    };
+
+    const offersHTML = offers.map(buildOfferCardHTML).join('');
+
+    modal.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="p-6 border-b dark:border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <img src="${cardImageUrl}" alt="${cardName}" class="w-16 h-20 object-contain rounded">
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-900 dark:text-white">
+                                Ofertas de ${cardName}
+                            </h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">
+                                ${offers.length} ${offers.length === 1 ? 'persona ofrece' : 'personas ofrecen'} esta carta
+                            </p>
+                        </div>
+                    </div>
+                    <button onclick="this.closest('.fixed').remove()"
+                            class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl">
+                        &times;
+                    </button>
+                </div>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1">
+                ${offersHTML}
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+// Página dedicada de ofertas de una carta (usado cuando hay muchas ofertas)
+const CARD_OFFERS_PAGE_SIZE = 10;
+let cardOffersState = { offers: [], page: 0, cardName: '', cardImageUrl: '' };
+
+function renderCardOffersPage() {
+    const { offers, page, cardName, cardImageUrl } = cardOffersState;
+    const totalPages = Math.ceil(offers.length / CARD_OFFERS_PAGE_SIZE);
+    const start = page * CARD_OFFERS_PAGE_SIZE;
+    const pageOffers = offers.slice(start, start + CARD_OFFERS_PAGE_SIZE);
+
+    const listContainer = document.getElementById('cardOffersListContainer');
+    const pagination = document.getElementById('cardOffersPagination');
+    const pageInfo = document.getElementById('cardOffersPageInfo');
+    const prevBtn = document.getElementById('cardOffersPrevBtn');
+    const nextBtn = document.getElementById('cardOffersNextBtn');
+
+    if (!listContainer) return;
+
+    listContainer.innerHTML = pageOffers.map(buildOfferCardHTML).join('');
+
+    if (totalPages > 1) {
+        pagination.classList.remove('hidden');
+        pageInfo.textContent = `Página ${page + 1} de ${totalPages}`;
+        prevBtn.disabled = page === 0;
+        nextBtn.disabled = page >= totalPages - 1;
+    } else {
+        pagination.classList.add('hidden');
+    }
+}
+
+window.showCardOffersSection = function (cardName, cardImageUrl, offers) {
+    // Guardar estado para paginación
+    cardOffersState = { offers, page: 0, cardName, cardImageUrl };
+
+    // Ocultar todas las demás secciones
+    hideHomeSections();
+    if (searchResultsSection) searchResultsSection.classList.add('hidden');
+    if (myCardsSection) myCardsSection.classList.add('hidden');
+    if (profileSection) profileSection.classList.add('hidden');
+    if (interchangesSection) interchangesSection.classList.add('hidden');
+    if (helpSection) helpSection.classList.add('hidden');
+    const inboxSection = document.getElementById('inboxSection');
+    if (inboxSection) inboxSection.classList.add('hidden');
+
+    // Rellenar cabecera
+    const titleEl = document.getElementById('cardOffersTitle');
+    const countEl = document.getElementById('cardOffersCount');
+    const imageEl = document.getElementById('cardOffersImage');
+    if (titleEl) titleEl.textContent = `Ofertas de ${cardName}`;
+    if (countEl) countEl.textContent = `${offers.length} ${offers.length === 1 ? 'persona ofrece' : 'personas ofrecen'} esta carta`;
+    if (imageEl) { imageEl.src = cardImageUrl; imageEl.alt = cardName; }
+
+    // Mostrar sección y renderizar primera página
+    if (cardOffersSection) {
+        cardOffersSection.classList.remove('hidden');
+        renderCardOffersPage();
+        window.scrollTo(0, 0);
+    }
+
+    // Configurar botones de paginación
+    const prevBtn = document.getElementById('cardOffersPrevBtn');
+    const nextBtn = document.getElementById('cardOffersNextBtn');
+    if (prevBtn) {
+        prevBtn.onclick = () => {
+            if (cardOffersState.page > 0) {
+                cardOffersState.page--;
+                renderCardOffersPage();
+                document.getElementById('cardOffersSection')?.scrollIntoView({ behavior: 'smooth' });
+            }
+        };
+    }
+    if (nextBtn) {
+        nextBtn.onclick = () => {
+            const totalPages = Math.ceil(cardOffersState.offers.length / CARD_OFFERS_PAGE_SIZE);
+            if (cardOffersState.page < totalPages - 1) {
+                cardOffersState.page++;
+                renderCardOffersPage();
+                document.getElementById('cardOffersSection')?.scrollIntoView({ behavior: 'smooth' });
+            }
+        };
+    }
+
+    // Botón volver
+    const backBtn = document.getElementById('cardOffersBackBtn');
+    if (backBtn) {
+        backBtn.onclick = () => {
+            if (cardOffersSection) cardOffersSection.classList.add('hidden');
+            showSearchResults();
+        };
+    }
+};
+
+// Función principal: muestra modal o página dedicada según el número de ofertas
 window.showCardOffers = function (cardName, cardSet, cardImageUrl) {
     const offers = getCardOfferDetails(cardName, cardSet);
 
@@ -2242,91 +2433,11 @@ window.showCardOffers = function (cardName, cardSet, cardImageUrl) {
         return;
     }
 
-    // Crear el modal
-    const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
-    modal.onclick = function (e) {
-        if (e.target === modal) modal.remove();
-    };
-
-    let offersHTML = offers.map(offer => `
-                <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4 border border-gray-200 dark:border-gray-600">
-                    <div class="flex justify-between items-start mb-3">
-                        <div>
-                            <h4 class="font-semibold text-gray-800 dark:text-white">${offer.title || 'Intercambio sin título'}</h4>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">Por: <span class="font-medium">${offer.user}</span></p>
-                        </div>
-                        <span class="text-xs text-gray-500 dark:text-gray-400">
-                            ${offer.createdAt ? new Date(offer.createdAt).toLocaleDateString('es-ES') : 'Fecha no disponible'}
-                        </span>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📤 Ofrece:</h5>
-                            <div class="space-y-1">
-                                ${offer.offeredCards.map(card => `
-                                    <div class="bg-white dark:bg-gray-600 px-2 py-1 rounded text-xs flex items-center gap-1">
-                                        ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-6 h-8 object-contain">` : ''}
-                                        <span class="text-gray-700 dark:text-gray-200">${card.name || card}</span>
-                                        ${card.condition ? `<span class="ml-2 text-gray-500 dark:text-gray-400">(${card.condition})</span>` : ''}
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                        
-                        <div>
-                            <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📥 Busca:</h5>
-                            <div class="space-y-1">
-                                ${offer.wantedCards.map(card => `
-                                    <div class="bg-white dark:bg-gray-600 px-2 py-1 rounded text-xs flex items-center gap-1">
-                                        ${card.image ? `<img src="${card.image}" alt="${card.name}" class="w-6 h-8 object-contain">` : ''}
-                                        <span class="text-gray-700 dark:text-gray-200">${card.name || card}</span>
-                                        ${card.condition ? `<span class="ml-2 text-gray-500 dark:text-gray-400">(${card.condition})</span>` : ''}
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-3 flex justify-end">
-                        <button class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1 rounded text-sm"
-                                onclick="alert('Función de contacto en desarrollo')">
-                            💬 Contactar
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-
-    modal.innerHTML = `
-                <div class="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                    <div class="p-6 border-b dark:border-gray-700">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-4">
-                                <img src="${cardImageUrl}" alt="${cardName}" class="w-16 h-20 object-contain rounded">
-                                <div>
-                                    <h3 class="text-xl font-bold text-gray-900 dark:text-white">
-                                        Ofertas de ${cardName}
-                                    </h3>
-                                    <p class="text-sm text-gray-600 dark:text-gray-400">
-                                        ${offers.length} ${offers.length === 1 ? 'persona ofrece' : 'personas ofrecen'} esta carta
-                                    </p>
-                                </div>
-                            </div>
-                            <button onclick="this.closest('.fixed').remove()" 
-                                    class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl">
-                                &times;
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="p-6 overflow-y-auto flex-1">
-                        ${offersHTML}
-                    </div>
-                </div>
-            `;
-
-    document.body.appendChild(modal);
+    if (offers.length > CARD_OFFERS_PAGE_THRESHOLD) {
+        showCardOffersSection(cardName, cardImageUrl, offers);
+    } else {
+        showCardOffersModal(cardName, cardImageUrl, offers);
+    }
 };
 
 // Función helper para obtener el nombre de usuario para mostrar en intercambios
@@ -8435,6 +8546,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     interchangesSection = document.getElementById('interchangesSection');
     helpSection = document.getElementById('helpSection');
+    cardOffersSection = document.getElementById('cardOffersSection');
 
     // Inicializar elementos del perfil
     profileLink = document.getElementById('profileLink');
