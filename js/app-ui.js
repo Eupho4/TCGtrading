@@ -1804,7 +1804,8 @@ window.selectCardForTrade = function (type, cardIndex, cardId, cardName, cardIma
         if (setInput) setInput.value = setName;
         if (numberInput) numberInput.value = cardNumber;
         if (fromMyCardsInput && !shouldLock) fromMyCardsInput.value = 'false';
-        if (customPriceInput && !shouldLock) customPriceInput.value = '';
+        const cachedCard = userCardsCache.find(c => c.id === cardId);
+        if (customPriceInput && !shouldLock) customPriceInput.value = (cachedCard?.customPrice != null) ? cachedCard.customPrice : '';
 
         // Ocultar resultados (solo si existe nameInput)
         if (nameInput && nameInput.parentElement && nameInput.parentElement.nextElementSibling) {
