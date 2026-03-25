@@ -11430,10 +11430,21 @@ function getUsersWithCardForTrade(cardName, cardId) {
     return users;
 }
 
+const USERS_WITH_CARD_PAGE_SIZE = 8;
+
 // Muestra u oculta el panel de usuarios que tienen la carta disponible para intercambio
 window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, panelId, marketPrice, buttonEl) {
     const panel = document.getElementById(panelId);
     if (!panel) return;
+    const usersPanelState = { users: [], currentPage: 1 };
+
+    const handleUsersPanelClick = (event) => {
+        const pageButton = event.target.closest('[data-users-page]');
+        if (!pageButton) return;
+
+        const nextPage = Number(pageButton.dataset.usersPage || usersPanelState.currentPage);
+        if (!Number.isNaN(nextPage)) renderUsersPanel(usersPanelState.users, nextPage);
+    };
 
     // Toggle: si ya está visible, ocultar
     if (!panel.classList.contains('hidden')) {
@@ -11461,7 +11472,7 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
     }
 
     // Función que renderiza la lista de usuarios
-    function renderUsersPanel(users) {
+    function renderUsersPanel(users, page = 1) {
         if (users.length === 0) {
             panel.innerHTML = `
                 <div class="py-3 px-3 text-sm text-gray-500 dark:text-gray-400 text-center">
@@ -11472,7 +11483,16 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
             return;
         }
 
-        const usersHTML = users.map(user => {
+        const totalPages = Math.ceil(users.length / USERS_WITH_CARD_PAGE_SIZE);
+        const currentPage = Math.min(Math.max(page, 1), totalPages);
+        const startIndex = (currentPage - 1) * USERS_WITH_CARD_PAGE_SIZE;
+        const visibleUsers = users.slice(startIndex, startIndex + USERS_WITH_CARD_PAGE_SIZE);
+        const visibleStart = startIndex + 1;
+        const visibleEnd = startIndex + visibleUsers.length;
+        usersPanelState.users = users;
+        usersPanelState.currentPage = currentPage;
+
+        const usersHTML = visibleUsers.map(user => {
             const userStats = JSON.parse(localStorage.getItem(`userStats_${user.userId}`) || '{}');
             const ratingHtml = userStats.averageRating
                 ? `${window.displayPokeballRating ? window.displayPokeballRating(userStats.averageRating, false, 'small') : ''}<span class="text-xs text-gray-500 dark:text-gray-400 ml-1">${userStats.averageRating.toFixed(1)}/5</span>`
@@ -11509,14 +11529,41 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
 
         panel.innerHTML = `
             <div class="pb-1">
-                <div class="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 px-1">
-                    Usuarios con esta carta disponible para intercambio:
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2 px-1">
+                    <div class="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                        Usuarios con esta carta disponible para intercambio:
+                    </div>
+                    <div class="text-[11px] text-gray-500 dark:text-gray-400">
+                        Mostrando ${visibleStart}-${visibleEnd} de ${users.length}
+                    </div>
                 </div>
                 ${usersHTML}
+                ${totalPages > 1 ? `
+                    <div class="flex items-center justify-center gap-2 flex-wrap mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+                        <button type="button"
+                                data-users-page="${currentPage - 1}"
+                                class="px-3 py-1 rounded-lg text-xs font-medium transition-colors ${currentPage === 1 ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600'}"
+                                ${currentPage === 1 ? 'disabled' : ''}>
+                            ‹ Anterior
+                        </button>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">
+                            Página ${currentPage} de ${totalPages}
+                        </span>
+                        <button type="button"
+                                data-users-page="${currentPage + 1}"
+                                class="px-3 py-1 rounded-lg text-xs font-medium transition-colors ${currentPage === totalPages ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600'}"
+                                ${currentPage === totalPages ? 'disabled' : ''}>
+                            Siguiente ›
+                        </button>
+                    </div>
+                ` : ''}
             </div>
         `;
+
         if (buttonEl) buttonEl.innerHTML = `<span>👥</span><span>Ver usuarios (${users.length})</span>`;
     }
+
+    panel.onclick = handleUsersPanelClick;
 
     // Consultar Firestore: colección global de cartas transferibles
     (async () => {
@@ -11612,5 +11659,3 @@ function showPageError() {
     errorIndicator.innerHTML = '❌ Error al cargar la página. Intenta de nuevo.';
     cardsContainer.appendChild(errorIndicator);
 }
-
-
