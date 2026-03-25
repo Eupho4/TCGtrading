@@ -293,9 +293,9 @@ window.toggleCardTransferable = async function(cardId, cardName, imageUrl, setNa
             showNotification(`🔒 "${cardName}" ya no está disponible para intercambio`, 'info', 3000);
         }
     } catch (e) {
-        console.warn('No se pudo actualizar el índice global de transferibles:', e);
+        console.error('No se pudo actualizar el índice global de transferibles:', e);
         if (newValue) {
-            showNotification(`✅ "${cardName}" marcada en tu colección`, 'success', 3000);
+            showNotification(`⚠️ "${cardName}" marcada localmente, pero no es visible para otros usuarios. Asegúrate de estar conectado.`, 'warning', 5000);
         } else {
             showNotification(`🔒 "${cardName}" desmarcada en tu colección`, 'info', 3000);
         }
@@ -11548,8 +11548,19 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
 
             renderUsersPanel(firestoreUsers);
         } catch (e) {
-            console.warn('Error al buscar usuarios en Firestore, usando localStorage:', e);
-            renderUsersPanel(getUsersWithCardForTrade(cardName, cardId));
+            console.error('Error al buscar usuarios en Firestore:', e);
+            // Si hay error de permisos (reglas no desplegadas aún), mostrar mensaje específico
+            if (e?.code === 'permission-denied') {
+                panel.innerHTML = `
+                    <div class="py-3 px-3 text-sm text-orange-600 dark:text-orange-400 text-center">
+                        ⚠️ No se pudo acceder al directorio de usuarios. Comprueba que las reglas de Firestore estén actualizadas.
+                    </div>
+                `;
+                if (buttonEl) buttonEl.innerHTML = `<span>👥</span><span>Ver usuarios</span>`;
+            } else {
+                // Para otros errores, intentar localStorage como fallback
+                renderUsersPanel(getUsersWithCardForTrade(cardName, cardId));
+            }
         }
     })();
 };

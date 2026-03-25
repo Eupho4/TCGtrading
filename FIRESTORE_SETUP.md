@@ -39,12 +39,12 @@ service cloud.firestore {
     // Reglas para el índice global de cartas transferibles
     // NECESARIAS para que funcione el marcado/desmarcado de cartas para intercambio
     match /transferable_cards/{cardId} {
-      // Cualquier usuario autenticado puede leer (para buscar cartas disponibles)
-      allow read: if request.auth != null;
+      // Lectura pública: cualquier persona puede ver qué cartas están disponibles para intercambio
+      allow read: if true;
 
       match /users/{userId} {
-        // Cualquier usuario autenticado puede leer entradas de transferibles
-        allow read: if request.auth != null;
+        // Lectura pública: cualquier persona puede ver quién tiene una carta disponible
+        allow read: if true;
         // Solo el propietario puede crear, actualizar o borrar su propia entrada
         allow write: if request.auth != null && request.auth.uid == userId;
       }
