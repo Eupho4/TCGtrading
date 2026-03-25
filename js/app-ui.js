@@ -237,6 +237,103 @@ async function renderTradeBalance(balanceEl, offeredCards, wantedCards) {
     `;
 }
 
+function parseTradeCustomPrice(value) {
+    if (value === '' || value == null) return null;
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getTradeCardPriceMarkup(card) {
+    if (!card?.name) return '';
+    if (card.customPrice != null) {
+        return `<span class="text-[10px] font-semibold text-orange-600 dark:text-orange-400">💰 ${formatTradePrice(card.customPrice)}</span>`;
+    }
+    return `<div data-card-price data-card-id="${card.id || ''}" data-card-name="${card.name || ''}"></div>`;
+}
+
+function collectCreateTradeCards(type) {
+    const container = document.getElementById(type === 'offered' ? 'offeredCardsContainer' : 'wantedCardsContainer');
+    if (!container) return [];
+
+    return Array.from(container.querySelectorAll('.trade-card')).map(cardEl => {
+        const nameInput = cardEl.querySelector(`input[name*="${type}_name_"]`);
+        return {
+            name: nameInput?.value?.trim() || '',
+            id: cardEl.querySelector(`input[name*="${type}_id_"]`)?.value || '',
+            customPrice: parseTradeCustomPrice(cardEl.querySelector(`input[name*="${type}_customPrice_"]`)?.value)
+        };
+    }).filter(card => card.name);
+}
+
+function collectProposalCards(type) {
+    const container = document.getElementById(`proposal${type === 'offered' ? 'Offered' : 'Wanted'}CardsContainer`);
+    if (!container) return [];
+
+    return Array.from(container.querySelectorAll('.proposal-card')).map(cardEl => {
+        const uniqueId = cardEl.dataset.uniqueId;
+        return {
+            name: cardEl.querySelector(`input[name="${uniqueId}_name"]`)?.value?.trim() || '',
+            id: cardEl.querySelector(`input[name="${uniqueId}_id"]`)?.value || '',
+            customPrice: parseTradeCustomPrice(cardEl.querySelector(`input[name="${uniqueId}_customPrice"]`)?.value)
+        };
+    }).filter(card => card.name);
+}
+
+function refreshCreateTradePricing() {
+    const modal = document.getElementById('createTradeModal');
+    if (!modal) return;
+
+    modal.querySelectorAll('.trade-card').forEach(cardEl => {
+        const priceEl = cardEl.querySelector('.trade-card-price');
+        if (!priceEl) return;
+
+        const nameInput = cardEl.querySelector('input[name*="_name_"]');
+        const idInput = cardEl.querySelector('input[name*="_id_"]');
+        const customPriceInput = cardEl.querySelector('input[name*="_customPrice_"]');
+        priceEl.innerHTML = getTradeCardPriceMarkup({
+            name: nameInput?.value?.trim() || '',
+            id: idInput?.value || '',
+            customPrice: parseTradeCustomPrice(customPriceInput?.value)
+        });
+    });
+
+    loadTradeCardPrices(modal);
+    renderTradeBalance(
+        modal.querySelector('#createTradeBalance'),
+        collectCreateTradeCards('offered'),
+        collectCreateTradeCards('wanted')
+    );
+}
+
+function refreshProposalPricing() {
+    const modal = document.getElementById('proposalModal');
+    if (!modal) return;
+
+    modal.querySelectorAll('.proposal-card').forEach(cardEl => {
+        const priceEl = cardEl.querySelector('.proposal-card-price');
+        if (!priceEl) return;
+
+        const uniqueId = cardEl.dataset.uniqueId;
+        priceEl.innerHTML = getTradeCardPriceMarkup({
+            name: cardEl.querySelector(`input[name="${uniqueId}_name"]`)?.value?.trim() || '',
+            id: cardEl.querySelector(`input[name="${uniqueId}_id"]`)?.value || '',
+            customPrice: parseTradeCustomPrice(cardEl.querySelector(`input[name="${uniqueId}_customPrice"]`)?.value)
+        });
+    });
+
+    loadTradeCardPrices(modal);
+    renderTradeBalance(
+        modal.querySelector('#proposalTradeBalance'),
+        collectProposalCards('offered'),
+        collectProposalCards('wanted')
+    );
+}
+
+function refreshActiveTradeComposerPricing() {
+    refreshCreateTradePricing();
+    refreshProposalPricing();
+}
+
 // ── Precio personalizado por carta ──────────────────────────────────────────
 
 // ── Transferible: marcar/desmarcar carta como disponible para intercambio ──
@@ -422,6 +519,7 @@ window.selectCollectionCardForTrade = function(type, cardIndex, cardId, cardName
         if (customPriceInput) customPriceInput.value = (cachedCard?.customPrice != null) ? cachedCard.customPrice : '';
     }
     selectCardForTrade(type, cardIndex, cardId, cardName, cardImage, setName, cardNumber, true);
+    refreshCreateTradePricing();
 };
 
 // Variables para migración y sincronización
@@ -1691,11 +1789,15 @@ window.selectCardForTrade = function (type, cardIndex, cardId, cardName, cardIma
         const imageInput = cardElement.querySelector(`input[name="${type}_image_${cardIndex}"]`);
         const setInput = cardElement.querySelector(`input[name="${type}_set_${cardIndex}"]`);
         const numberInput = cardElement.querySelector(`input[name="${type}_number_${cardIndex}"]`);
+        const fromMyCardsInput = cardElement.querySelector(`input[name="${type}_fromMyCards_${cardIndex}"]`);
+        const customPriceInput = cardElement.querySelector(`input[name="${type}_customPrice_${cardIndex}"]`);
 
         if (idInput) idInput.value = cardId;
         if (imageInput) imageInput.value = cardImage;
         if (setInput) setInput.value = setName;
         if (numberInput) numberInput.value = cardNumber;
+        if (fromMyCardsInput && !shouldLock) fromMyCardsInput.value = 'false';
+        if (customPriceInput && !shouldLock) customPriceInput.value = '';
 
         // Ocultar resultados (solo si existe nameInput)
         if (nameInput && nameInput.parentElement && nameInput.parentElement.nextElementSibling) {
@@ -1711,6 +1813,7 @@ window.selectCardForTrade = function (type, cardIndex, cardId, cardName, cardIma
 
         // Actualizar título generado
         updateGeneratedTitle();
+        refreshCreateTradePricing();
     }
 };
 
@@ -1786,11 +1889,15 @@ window.clearCardSelection = function (type, cardIndex) {
     const imageInput = cardElement.querySelector(`input[name="${type}_image_${cardIndex}"]`);
     const setInput = cardElement.querySelector(`input[name="${type}_set_${cardIndex}"]`);
     const numberInput = cardElement.querySelector(`input[name="${type}_number_${cardIndex}"]`);
+    const fromMyCardsInput = cardElement.querySelector(`input[name="${type}_fromMyCards_${cardIndex}"]`);
+    const customPriceInput = cardElement.querySelector(`input[name="${type}_customPrice_${cardIndex}"]`);
 
     if (idInput) idInput.value = '';
     if (imageInput) imageInput.value = '';
     if (setInput) setInput.value = '';
     if (numberInput) numberInput.value = '';
+    if (fromMyCardsInput) fromMyCardsInput.value = 'false';
+    if (customPriceInput) customPriceInput.value = '';
 
     // Quitar el icono de miniatura
     const thumbnailContainer = cardElement.querySelector('.card-thumbnail-inline');
@@ -1805,6 +1912,7 @@ window.clearCardSelection = function (type, cardIndex) {
 
     // Actualizar título generado
     updateGeneratedTitle();
+    refreshCreateTradePricing();
 };
 
 // Función para manejar Enter en el input de carta
@@ -2953,25 +3061,29 @@ function proposeTrade(tradeId) {
                                 </div>
                                 
                                 <!-- Cartas que buscas (modificación de lo que ofrece) -->
-                                <div>
-                                    <h4 class="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-                                        <span class="bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400 p-1 rounded">
-                                            📥
+                                 <div>
+                                     <h4 class="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                                         <span class="bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400 p-1 rounded">
+                                             📥
                                         </span>
                                         Cartas que Buscas (de lo que ofrece)
                                     </h4>
                                     <div id="proposalWantedCardsContainer" class="space-y-3">
                                         <!-- Se pre-cargarán las cartas que el otro ofrece -->
                                     </div>
-                                    <button type="button" onclick="addCardToProposal('wanted')"
-                                            class="mt-3 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
-                                        + Añadir Carta
-                                    </button>
-                                </div>
-                                
-                                <!-- Mensaje adicional -->
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                     <button type="button" onclick="addCardToProposal('wanted')"
+                                             class="mt-3 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                                         + Añadir Carta
+                                     </button>
+                                 </div>
+
+                                 <div id="proposalTradeBalance" class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+                                     <p class="text-xs text-gray-500 dark:text-gray-400 italic text-center">Selecciona cartas para calcular el balance</p>
+                                 </div>
+                                 
+                                 <!-- Mensaje adicional -->
+                                 <div>
+                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                         Mensaje (opcional)
                                     </label>
                                     <textarea id="proposalMessage" rows="3"
@@ -3000,6 +3112,7 @@ function proposeTrade(tradeId) {
 
     // Pre-cargar las cartas sugeridas basadas en el intercambio original
     preloadProposalCards(originalTrade);
+    refreshProposalPricing();
 }
 
 // Función para pre-cargar las cartas en la propuesta
@@ -3026,6 +3139,8 @@ function preloadProposalCards(originalTrade) {
         const cardHtml = createProposalCardInput('wanted', index, card, true);
         wantedContainer.insertAdjacentHTML('beforeend', cardHtml);
     });
+
+    refreshProposalPricing();
 }
 
 // Función para crear un input de carta en la propuesta
@@ -3110,9 +3225,12 @@ function createProposalCardInput(type, index, cardData = {}, isPreloaded = false
                             <input type="hidden" name="${uniqueId}_set" value="${cardData.set || ''}">
                             <input type="hidden" name="${uniqueId}_number" value="${cardData.number || ''}">
                             <input type="hidden" name="${uniqueId}_customPrice" value="${cardData.customPrice != null ? cardData.customPrice : ''}">
+                            <div class="proposal-card-price min-h-[18px]">
+                                ${getTradeCardPriceMarkup(cardData)}
+                            </div>
                         </div>
-                        
-                        <button type="button" onclick="this.closest('.proposal-card').remove()"
+                         
+                        <button type="button" onclick="removeProposalCard(this)"
                                 class="text-red-500 hover:text-red-700 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -3135,6 +3253,7 @@ window.addCardToProposal = function (type) {
     const cardHtml = createProposalCardInput(type, index);
     container.insertAdjacentHTML('beforeend', cardHtml);
     console.log('✅ Carta añadida. Total ahora:', container.children.length);
+    refreshProposalPricing();
 };
 
 // Función para buscar cartas en la API desde el modal de propuesta
@@ -3310,6 +3429,16 @@ window.selectProposalCard = function (uniqueId, cardId, cardName, cardImage, set
         })();
     numberInput.value = cardNumber;
 
+    const customPriceInput = cardElement.querySelector(`input[name="${uniqueId}_customPrice"]`) ||
+        (() => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = `${uniqueId}_customPrice`;
+            cardElement.appendChild(input);
+            return input;
+        })();
+    customPriceInput.value = '';
+
     // Actualizar la imagen
     const imageContainer = cardElement.querySelector('.proposal-card-image');
     if (imageContainer) {
@@ -3331,6 +3460,8 @@ window.selectProposalCard = function (uniqueId, cardId, cardName, cardImage, set
     if (resultsContainer) {
         resultsContainer.classList.add('hidden');
     }
+
+    refreshProposalPricing();
 };
 
 // Seleccionar carta de la colección del usuario en el modal de propuesta
@@ -3354,6 +3485,14 @@ window.selectProposalCardFromCollection = function (uniqueId, cardId, cardName, 
             }
         }
     }
+
+    const cachedCard = userCardsCache.find(card => card.id === cardId);
+    const customPriceInput = cardElement.querySelector(`input[name="${uniqueId}_customPrice"]`);
+    if (customPriceInput) {
+        customPriceInput.value = cachedCard?.customPrice != null ? cachedCard.customPrice : '';
+    }
+
+    refreshProposalPricing();
 };
 
 // Función para añadir desde Mis Cartas a la propuesta
@@ -3557,6 +3696,12 @@ window.selectFromMyCardsToProposal = function (type, cardId, cardName, cardImage
 
     // Mostrar notificación de éxito
     showNotification('Carta añadida desde tu colección', 'success', 2000);
+    refreshProposalPricing();
+};
+
+window.removeProposalCard = function (button) {
+    button.closest('.proposal-card')?.remove();
+    refreshProposalPricing();
 };
 
 // Función para manejar el envío de la propuesta
@@ -5331,10 +5476,10 @@ window.showCreateTradeModal = (existingTrade = null) => {
                         </div>
 
                         <!-- Cartas que busco -->
-                        <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
-                            <h4 class="text-lg font-semibold text-green-800 dark:text-green-300 mb-4 flex items-center">
-                                <span class="mr-2">📥</span> Cartas que Busco
-                            </h4>
+                         <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+                             <h4 class="text-lg font-semibold text-green-800 dark:text-green-300 mb-4 flex items-center">
+                                 <span class="mr-2">📥</span> Cartas que Busco
+                             </h4>
                             <div id="wantedCardsContainer" class="space-y-3 mb-4">
                                 <!-- Las cartas buscadas se añadirán aquí -->
                             </div>
@@ -5342,13 +5487,22 @@ window.showCreateTradeModal = (existingTrade = null) => {
                                 <button type="button" id="addWantedCardBtn"
                                         class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center">
                                     <span class="mr-2">+</span> Añadir Carta
-                                </button>
-                            </div>
-                        </div>
+                                 </button>
+                             </div>
+                         </div>
 
-                        <!-- Otros detalles -->
-                        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                            <h4 class="text-lg font-semibold text-gray-800 dark:text-white mb-4 flex items-center">
+                         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                             <h4 class="text-lg font-semibold text-gray-800 dark:text-white mb-3 flex items-center">
+                                 <span class="mr-2">⚖️</span> Balance estimado
+                             </h4>
+                             <div id="createTradeBalance">
+                                 <p class="text-xs text-gray-500 dark:text-gray-400 italic text-center">Selecciona cartas para calcular el balance</p>
+                             </div>
+                         </div>
+
+                         <!-- Otros detalles -->
+                         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                             <h4 class="text-lg font-semibold text-gray-800 dark:text-white mb-4 flex items-center">
                                 <span class="mr-2">📝</span> Otros Detalles
                             </h4>
                             <div>
@@ -5496,12 +5650,14 @@ function setupCreateTradeModalEvents(modal, isEditing = false, existingTrade = n
 
             console.log('✅ Pre-carga completada en modo edición - campos EDITABLES');
         }, 600);
-    } else {
-        // Modo crear nuevo: añadir cartas vacías
-        console.log('🆕 Modo crear nuevo: añadiendo cartas vacías');
-        addCardToTrade('offered');
-        addCardToTrade('wanted');
-    }
+     } else {
+         // Modo crear nuevo: añadir cartas vacías
+         console.log('🆕 Modo crear nuevo: añadiendo cartas vacías');
+         addCardToTrade('offered');
+         addCardToTrade('wanted');
+     }
+
+    refreshCreateTradePricing();
 }
 
 // Función para pre-cargar datos en una carta existente
@@ -5565,6 +5721,11 @@ function preloadCardData(type, cardIndex, cardData) {
         numberInput.value = cardData.number;
     }
 
+    const customPriceInput = cardElement.querySelector(`input[name*="${type}_customPrice_"]`);
+    if (customPriceInput) {
+        customPriceInput.value = cardData.customPrice != null ? cardData.customPrice : '';
+    }
+
     // Pre-cargar condición
     const conditionSelect = cardElement.querySelector(`select[name*="${type}_condition_"]`);
     if (conditionSelect && cardData.condition) {
@@ -5609,6 +5770,7 @@ function preloadCardData(type, cardIndex, cardData) {
 
     // NO bloquear en modo edición - el usuario debe poder modificar
     console.log(`✅ Carta ${type} ${cardIndex} pre-cargada con miniatura y EDITABLE (modo edición)`);
+    refreshCreateTradePricing();
 }
 
 // Función para añadir carta al intercambio
@@ -5748,10 +5910,12 @@ function addCardToTrade(type, forceAdd = false) {
                         </button>
                     </div>
                 </div>
+                <div class="trade-card-price min-h-[18px] mt-3"></div>
             `;
 
     container.appendChild(cardElement);
     updateGeneratedTitle();
+    refreshCreateTradePricing();
 
     console.log(`✅ Nueva carta ${type} añadida y lista para editar`);
 }
@@ -5822,6 +5986,7 @@ window.removeCardFromTrade = function (button) {
     // Actualizar el título
     console.log('🔄 Actualizando título...');
     updateGeneratedTitle();
+    refreshCreateTradePricing();
 
     console.log('✨ Carta eliminada exitosamente');
 };
@@ -5972,6 +6137,8 @@ async function handleCreateTradeSubmit(e) {
 
         if (nameInput && nameInput.value.trim()) {
             const fromMyCardsInput = cardEl.querySelector(`input[name*="wanted_fromMyCards_"]`);
+            const customPriceInput = cardEl.querySelector(`input[name*="wanted_customPrice_"]`);
+            const rawCustomPrice = customPriceInput ? customPriceInput.value : '';
             tradeData.wantedCards.push({
                 name: nameInput.value.trim(),
                 id: idInput ? idInput.value : '',
@@ -5980,7 +6147,8 @@ async function handleCreateTradeSubmit(e) {
                 number: numberInput ? numberInput.value : '',
                 condition: conditionSelect ? conditionSelect.value : 'NM',
                 language: languageSelect ? languageSelect.value : 'Español',
-                fromMyCards: fromMyCardsInput ? fromMyCardsInput.value === 'true' : false
+                fromMyCards: fromMyCardsInput ? fromMyCardsInput.value === 'true' : false,
+                customPrice: rawCustomPrice !== '' && !isNaN(parseFloat(rawCustomPrice)) ? parseFloat(rawCustomPrice) : null
             });
         }
     });
