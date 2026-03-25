@@ -237,20 +237,23 @@ async function renderTradeBalance(balanceEl, offeredCards, wantedCards) {
     `;
 }
 
+// Función para normalizar un precio personalizado a número o null
 function parseTradeCustomPrice(value) {
-    if (value === '' || value == null) return null;
+    if (value === '' || value === null || typeof value === 'undefined') return null;
     const parsed = parseFloat(value);
     return Number.isFinite(parsed) ? parsed : null;
 }
 
+// Función para generar el HTML del precio visible de una carta seleccionada
 function getTradeCardPriceMarkup(card) {
     if (!card?.name) return '';
-    if (card.customPrice != null) {
+    if (card.customPrice !== null && typeof card.customPrice !== 'undefined') {
         return `<span class="text-[10px] font-semibold text-orange-600 dark:text-orange-400">💰 ${formatTradePrice(card.customPrice)}</span>`;
     }
     return `<div data-card-price data-card-id="${card.id || ''}" data-card-name="${card.name || ''}"></div>`;
 }
 
+// Función para recopilar cartas válidas del modal de crear intercambio
 function collectCreateTradeCards(type) {
     const container = document.getElementById(type === 'offered' ? 'offeredCardsContainer' : 'wantedCardsContainer');
     if (!container) return [];
@@ -265,6 +268,7 @@ function collectCreateTradeCards(type) {
     }).filter(card => card.name);
 }
 
+// Función para recopilar cartas válidas del modal de propuesta
 function collectProposalCards(type) {
     const container = document.getElementById(`proposal${type === 'offered' ? 'Offered' : 'Wanted'}CardsContainer`);
     if (!container) return [];
@@ -279,6 +283,7 @@ function collectProposalCards(type) {
     }).filter(card => card.name);
 }
 
+// Función para refrescar precios y balance del modal de crear intercambio
 function refreshCreateTradePricing() {
     const modal = document.getElementById('createTradeModal');
     if (!modal) return;
@@ -305,6 +310,7 @@ function refreshCreateTradePricing() {
     );
 }
 
+// Función para refrescar precios y balance del modal de propuesta
 function refreshProposalPricing() {
     const modal = document.getElementById('proposalModal');
     if (!modal) return;
@@ -329,6 +335,7 @@ function refreshProposalPricing() {
     );
 }
 
+// Función para refrescar el modal de intercambio activo, si existe
 function refreshActiveTradeComposerPricing() {
     refreshCreateTradePricing();
     refreshProposalPricing();
@@ -3699,8 +3706,11 @@ window.selectFromMyCardsToProposal = function (type, cardId, cardName, cardImage
     refreshProposalPricing();
 };
 
+// Función para eliminar una carta de la propuesta y recalcular precios
 window.removeProposalCard = function (button) {
-    button.closest('.proposal-card')?.remove();
+    const cardElement = button.closest('.proposal-card');
+    if (!cardElement) return;
+    cardElement.remove();
     refreshProposalPricing();
 };
 
