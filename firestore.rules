@@ -6,11 +6,15 @@ service cloud.firestore {
       // Permitir lectura y escritura solo al propietario del documento
       allow read, write: if request.auth != null && request.auth.uid == userId;
       
-      // Reglas para la subcolección de cartas del usuario
-      match /my_cards/{cardId} {
-        // Permitir lectura y escritura solo al propietario
+      // Reglas para todas las subcolecciones del usuario (my_cards, trades, ratings, etc.)
+      match /{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+    }
+
+    // Reglas para colecciones de usuario (userCollections)
+    match /userCollections/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
     // Reglas para el índice global de cartas transferibles
@@ -22,7 +26,7 @@ service cloud.firestore {
         // Cualquier usuario autenticado puede leer entradas de transferibles
         allow read: if request.auth != null;
         // Solo el propietario puede escribir o borrar su propia entrada
-        allow write, delete: if request.auth != null && request.auth.uid == userId;
+        allow write: if request.auth != null && request.auth.uid == userId;
       }
     }
     
