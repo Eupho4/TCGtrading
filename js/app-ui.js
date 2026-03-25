@@ -11430,11 +11430,21 @@ function getUsersWithCardForTrade(cardName, cardId) {
     return users;
 }
 
+const USERS_WITH_CARD_PAGE_SIZE = 8;
+
 // Muestra u oculta el panel de usuarios que tienen la carta disponible para intercambio
 window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, panelId, marketPrice, buttonEl) {
     const panel = document.getElementById(panelId);
     if (!panel) return;
-    const usersPerPage = 8;
+    const usersPanelState = { users: [], currentPage: 1 };
+
+    const handleUsersPanelClick = (event) => {
+        const pageButton = event.target.closest('[data-users-page]');
+        if (!pageButton) return;
+
+        const nextPage = Number(pageButton.dataset.usersPage || usersPanelState.currentPage);
+        if (!Number.isNaN(nextPage)) renderUsersPanel(usersPanelState.users, nextPage);
+    };
 
     // Toggle: si ya está visible, ocultar
     if (!panel.classList.contains('hidden')) {
@@ -11473,12 +11483,14 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
             return;
         }
 
-        const totalPages = Math.ceil(users.length / usersPerPage);
+        const totalPages = Math.ceil(users.length / USERS_WITH_CARD_PAGE_SIZE);
         const currentPage = Math.min(Math.max(page, 1), totalPages);
-        const startIndex = (currentPage - 1) * usersPerPage;
-        const visibleUsers = users.slice(startIndex, startIndex + usersPerPage);
+        const startIndex = (currentPage - 1) * USERS_WITH_CARD_PAGE_SIZE;
+        const visibleUsers = users.slice(startIndex, startIndex + USERS_WITH_CARD_PAGE_SIZE);
         const visibleStart = startIndex + 1;
         const visibleEnd = startIndex + visibleUsers.length;
+        usersPanelState.users = users;
+        usersPanelState.currentPage = currentPage;
 
         const usersHTML = visibleUsers.map(user => {
             const userStats = JSON.parse(localStorage.getItem(`userStats_${user.userId}`) || '{}');
@@ -11548,15 +11560,10 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
             </div>
         `;
 
-        panel.querySelectorAll('[data-users-page]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const nextPage = Number(btn.dataset.usersPage || currentPage);
-                if (!Number.isNaN(nextPage)) renderUsersPanel(users, nextPage);
-            });
-        });
-
         if (buttonEl) buttonEl.innerHTML = `<span>👥</span><span>Ver usuarios (${users.length})</span>`;
     }
+
+    panel.onclick = handleUsersPanelClick;
 
     // Consultar Firestore: colección global de cartas transferibles
     (async () => {
@@ -11652,4 +11659,3 @@ function showPageError() {
     errorIndicator.innerHTML = '❌ Error al cargar la página. Intenta de nuevo.';
     cardsContainer.appendChild(errorIndicator);
 }
-
