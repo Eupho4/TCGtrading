@@ -253,14 +253,14 @@ function getTradeCardPriceMarkup(card) {
     return `<div data-card-price data-card-id="${card.id || ''}" data-card-name="${card.name || ''}"></div>`;
 }
 
-// Función para mostrar las cualidades visibles de una carta en resúmenes de intercambio
+// Función para mostrar los detalles visibles de una carta en resúmenes de intercambio
 function getTradeCardVariantSummary(card) {
     const details = [
         card?.condition || 'NM',
         card?.language || 'Español'
-    ].filter(Boolean);
+    ];
 
-    return details.length ? ` (${details.join(' • ')})` : '';
+    return ` (${details.join(' • ')})`;
 }
 
 // Función para recopilar cartas válidas del modal de crear intercambio
