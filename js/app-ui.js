@@ -11698,7 +11698,7 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
                         <div class="flex items-center gap-1 flex-wrap text-sm">${priceHTML}</div>
                         ${user.condition ? `<div class="text-xs text-gray-500 dark:text-gray-400">${user.condition}${user.language ? ' · ' + user.language : ''}</div>` : ''}
                     </div>
-                    <button onclick="proposeTradeForCard('${escStr(cardId)}', '${escStr(cardName)}', '${escStr(cardImageUrl)}', '${escStr(cardSet)}', '')"
+                    <button onclick="proposeTradeForCard('${escStr(cardId)}', '${escStr(cardName)}', '${escStr(cardImageUrl)}', '${escStr(cardSet)}', '', ${user.customPrice != null ? Number(user.customPrice) : 'null'})"
                             class="shrink-0 bg-green-500 hover:bg-green-600 active:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-colors w-full sm:w-auto text-center">
                         🤝 Proponer intercambio
                     </button>
@@ -11792,7 +11792,7 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
 };
 
 // Abre el modal de creación de intercambio con la carta buscada ya pre-cargada en la sección "Cartas que Busco"
-window.proposeTradeForCard = function(cardId, cardName, cardImageUrl, cardSetName, cardNumber) {
+window.proposeTradeForCard = function(cardId, cardName, cardImageUrl, cardSetName, cardNumber, customPrice = null) {
     if (!currentUser) {
         showNotification('Debes iniciar sesión para proponer un intercambio', 'warning', 4000);
         showAuthModal('login');
@@ -11806,6 +11806,13 @@ window.proposeTradeForCard = function(cardId, cardName, cardImageUrl, cardSetNam
     setTimeout(() => {
         if (typeof window.selectCardForTrade === 'function') {
             window.selectCardForTrade('wanted', 0, cardId, cardName, cardImageUrl, cardSetName, cardNumber || '', false);
+            const wantedContainer = document.getElementById('wantedCardsContainer');
+            const wantedCard = wantedContainer?.querySelector('.trade-card');
+            const customPriceInput = wantedCard?.querySelector('input[name="wanted_customPrice_0"]');
+            if (customPriceInput) {
+                customPriceInput.value = customPrice != null && !Number.isNaN(Number(customPrice)) ? Number(customPrice) : '';
+            }
+            refreshCreateTradePricing();
         }
     }, 350);
 };
