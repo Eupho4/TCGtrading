@@ -11810,7 +11810,8 @@ window.proposeTradeForCard = function(cardId, cardName, cardImageUrl, cardSetNam
             const wantedCard = wantedContainer?.querySelector('.trade-card');
             const customPriceInput = wantedCard?.querySelector('input[name="wanted_customPrice_0"]');
             if (customPriceInput) {
-                customPriceInput.value = customPrice != null && !Number.isNaN(Number(customPrice)) ? Number(customPrice) : '';
+                const normalizedCustomPrice = Number(customPrice);
+                customPriceInput.value = customPrice != null && Number.isFinite(normalizedCustomPrice) ? normalizedCustomPrice : '';
             }
             refreshCreateTradePricing();
         }
