@@ -1719,6 +1719,44 @@
             </div>
         </section>
 
+        <!-- Sección Ofertas de Carta -->
+        <section id="cardOffersSection" class="mb-12 hidden">
+            <div class="max-w-5xl mx-auto">
+                <!-- Header -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6">
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div class="flex items-center gap-4">
+                            <button id="cardOffersBackBtn"
+                                    class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1 text-sm font-medium">
+                                ← Volver
+                            </button>
+                            <img id="cardOffersImage" src="" alt="" class="w-14 h-20 object-contain rounded shadow">
+                            <div>
+                                <h2 id="cardOffersTitle" class="text-2xl font-bold text-gray-800 dark:text-white"></h2>
+                                <p id="cardOffersCount" class="text-sm text-gray-500 dark:text-gray-400 mt-1"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lista paginada de ofertas -->
+                <div id="cardOffersListContainer" class="space-y-4"></div>
+
+                <!-- Paginación -->
+                <div id="cardOffersPagination" class="flex items-center justify-center gap-2 mt-6 hidden">
+                    <button id="cardOffersPrevBtn"
+                            class="px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium">
+                        ← Anterior
+                    </button>
+                    <span id="cardOffersPageInfo" class="text-sm text-gray-600 dark:text-gray-400 px-2"></span>
+                    <button id="cardOffersNextBtn"
+                            class="px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium">
+                        Siguiente →
+                    </button>
+                </div>
+            </div>
+        </section>
+
         <!-- Sección Mi Perfil -->
         <section id="profileSection" class="mb-12 hidden">
             <div class="max-w-6xl mx-auto">
