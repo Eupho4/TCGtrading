@@ -247,18 +247,32 @@ window.toggleCardTransferable = async function(cardId, cardName, imageUrl, setNa
         showNotification('Debes iniciar sesión para marcar cartas como transferibles', 'warning', 3000);
         return;
     }
+
+    const cardRef = doc(db, 'users', currentUser.uid, 'my_cards', cardId);
+    const transferRef = doc(db, 'transferable_cards', cardId, 'users', currentUser.uid);
+
+    // Usar el estado pasado como parámetro; si no, intentar desde caché
+    const cached = userCardsCache.find(c => c.id === cardId);
+    let resolvedCurrent = false;
+    if (currentIsTransferable !== undefined) {
+        resolvedCurrent = !!currentIsTransferable;
+    } else if (cached) {
+        resolvedCurrent = !!cached.isTransferable;
+    }
+    const newValue = !resolvedCurrent;
+
+    // Paso 1: Actualizar la colección personal del usuario (operación crítica)
     try {
-        const cardRef = doc(db, 'users', currentUser.uid, 'my_cards', cardId);
-        const transferRef = doc(db, 'transferable_cards', cardId, 'users', currentUser.uid);
-
-        // Usar el estado pasado como parámetro; si no, intentar desde caché
-        const cached = userCardsCache.find(c => c.id === cardId);
-        const resolvedCurrent = currentIsTransferable !== undefined ? !!currentIsTransferable : (cached ? !!cached.isTransferable : false);
-        const newValue = !resolvedCurrent;
-
         await setDoc(cardRef, { isTransferable: newValue }, { merge: true });
         if (cached) cached.isTransferable = newValue;
+    } catch (e) {
+        console.error('Error al actualizar carta en colección personal:', e);
+        showNotification('Error al actualizar el estado de la carta', 'error', 3000);
+        return;
+    }
 
+    // Paso 2: Actualizar el índice global de cartas transferibles (no crítico)
+    try {
         if (newValue) {
             const userName = await getUserDisplayName();
             await setDoc(transferRef, {
@@ -278,17 +292,21 @@ window.toggleCardTransferable = async function(cardId, cardName, imageUrl, setNa
             await deleteDoc(transferRef);
             showNotification(`🔒 "${cardName}" ya no está disponible para intercambio`, 'info', 3000);
         }
-
-        // Re-renderizar la colección visible
-        if (typeof loadMyCollection === 'function' && document.getElementById('myCardsContainer')) {
-            loadMyCollection(currentUser.uid);
-        }
-        if (typeof loadUserCollection === 'function' && document.getElementById('myCardsGrid')) {
-            loadUserCollection();
-        }
     } catch (e) {
-        console.error('Error al actualizar estado transferible:', e);
-        showNotification('Error al actualizar el estado', 'error', 3000);
+        console.warn('No se pudo actualizar el índice global de transferibles:', e);
+        if (newValue) {
+            showNotification(`✅ "${cardName}" marcada en tu colección`, 'success', 3000);
+        } else {
+            showNotification(`🔒 "${cardName}" desmarcada en tu colección`, 'info', 3000);
+        }
+    }
+
+    // Paso 3: Re-renderizar la colección visible siempre (independientemente del resultado del índice)
+    if (typeof loadMyCollection === 'function' && document.getElementById('myCardsContainer')) {
+        loadMyCollection(currentUser.uid);
+    }
+    if (typeof loadUserCollection === 'function' && document.getElementById('myCardsGrid')) {
+        loadUserCollection();
     }
 };
 
