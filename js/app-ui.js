@@ -3027,6 +3027,7 @@ function proposeTrade(tradeId) {
                     <!-- Content -->
                     <div class="overflow-y-auto max-h-[calc(90vh-120px)] p-6">
                         <form id="proposalForm" onsubmit="handleProposalSubmit(event, '${tradeId}')">
+                            <input type="hidden" id="proposalOwnerId" value="${originalTrade.userId || ''}">
                             <!-- Información del intercambio original -->
                             <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 mb-6">
                                 <h3 class="font-bold text-gray-900 dark:text-white mb-3">
@@ -3754,12 +3755,19 @@ window.handleProposalSubmit = function (event, originalTradeId) {
 
     const originalTradeData = allTrades.find(t => t.id === originalTradeId);
 
+    const fallbackOwnerId = document.getElementById('proposalOwnerId')?.value || '';
+    const ownerId = originalTradeData?.userId || fallbackOwnerId || (originalTradeData?.ownerKey ? originalTradeData.ownerKey.replace('userTrades_', '') : '');
+    const tradeName = originalTradeData?.title || 'Intercambio sin título';
+
     // Recopilar datos de la propuesta
     const proposalData = {
         id: 'proposal_' + Date.now(),
         originalTradeId: originalTradeId,
         fromUserId: currentUser.uid,
         fromUserName: localStorage.getItem(`username_${currentUser.uid}`) || currentUser.email.split('@')[0],
+        toUserId: ownerId,
+        toUserName: originalTradeData?.userName || originalTradeData?.user || 'Usuario',
+        tradeName,
         message: document.getElementById('proposalMessage')?.value || '',
         offeredCards: [],
         wantedCards: [],
@@ -3833,12 +3841,11 @@ window.handleProposalSubmit = function (event, originalTradeId) {
         }
 
         // Crear notificación para el dueño del intercambio
-        const ownerId = ownerKey.replace('userTrades_', '');
         const notification = {
             id: `notif_${Date.now()}`,
             type: 'proposal',
             title: '📬 Nueva propuesta recibida',
-            message: `${proposalData.fromUserName} ha enviado una propuesta para tu intercambio "${originalTradeData.title}"`,
+            message: `${proposalData.fromUserName} ha enviado una propuesta para tu intercambio "${tradeName}"`,
             tradeId: originalTradeId,
             proposalId: proposalData.id,
             from: proposalData.fromUserName,
@@ -3998,21 +4005,33 @@ function loadReceivedProposals() {
     if (!container) return;
 
     const receivedProposals = [];
-
-    // Buscar propuestas en todos los intercambios del usuario
     const userTrades = JSON.parse(localStorage.getItem(`userTrades_${currentUser.uid}`) || '[]');
+    const userTradeMap = new Map(userTrades.map(trade => [trade.id, trade]));
 
-    userTrades.forEach(trade => {
-        const proposalsKey = `proposals_${trade.id}`;
+    // Buscar propuestas guardadas para el usuario actual
+    const proposalKeys = Object.keys(localStorage).filter(key => key.startsWith('proposals_'));
+
+    proposalKeys.forEach(proposalsKey => {
+        const tradeId = proposalsKey.replace('proposals_', '');
         const proposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
         proposals.forEach(proposal => {
+            const relatedTrade = userTradeMap.get(tradeId);
+            const isDirectRecipient = proposal.toUserId === currentUser.uid;
+            const isLegacyRecipient = !proposal.toUserId && !!relatedTrade;
+
+            if (!isDirectRecipient && !isLegacyRecipient) {
+                return;
+            }
+
             receivedProposals.push({
                 ...proposal,
-                tradeName: trade.title,
-                tradeId: trade.id
+                tradeName: proposal.tradeName || relatedTrade?.title || 'Intercambio sin título',
+                tradeId
             });
         });
     });
+
+    receivedProposals.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     if (receivedProposals.length === 0) {
         container.innerHTML = `
