@@ -71,6 +71,28 @@
       }
     },
     
+    "tradeProposals": {
+      "$userId": {
+        ".read": "$userId === auth.uid",
+        ".write": "auth != null",
+        
+        "$proposalId": {
+          ".validate": "newData.hasChildren(['id', 'tradeId', 'fromUserId', 'status', 'createdAt'])"
+        }
+      }
+    },
+    
+    "sentTradeProposals": {
+      "$userId": {
+        ".read": "$userId === auth.uid",
+        ".write": "auth != null",
+        
+        "$proposalId": {
+          ".validate": "newData.hasChildren(['id', 'tradeId', 'fromUserId', 'status', 'createdAt'])"
+        }
+      }
+    },
+    
     "test": {
       // Nodo de prueba para verificar conexión
       ".read": "auth != null",
