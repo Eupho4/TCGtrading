@@ -11622,6 +11622,9 @@ function getUsersWithCardForTrade(cardName, cardId) {
 const USERS_WITH_CARD_PAGE_SIZE = 8;
 
 // Muestra u oculta el panel de usuarios que tienen la carta disponible para intercambio
+const DIRECT_PROPOSAL_DEFAULT_CONDITION = 'NM';
+const DIRECT_PROPOSAL_DEFAULT_LANGUAGE = 'Español';
+
 window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, panelId, marketPrice, buttonEl) {
     const panel = document.getElementById(panelId);
     if (!panel) return;
@@ -11708,7 +11711,7 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
                         <div class="flex items-center gap-1 flex-wrap text-sm">${priceHTML}</div>
                         ${user.condition ? `<div class="text-xs text-gray-500 dark:text-gray-400">${user.condition}${user.language ? ' · ' + user.language : ''}</div>` : ''}
                     </div>
-                    <button onclick="proposeTradeForCard('${escStr(cardId)}', '${escStr(cardName)}', '${escStr(cardImageUrl)}', '${escStr(cardSet)}', '', ${user.customPrice != null ? Number(user.customPrice) : 'null'}, '${escStr(user.condition || 'NM')}', '${escStr(user.language || 'Español')}')"
+                    <button onclick="proposeTradeForCard('${escStr(cardId)}', '${escStr(cardName)}', '${escStr(cardImageUrl)}', '${escStr(cardSet)}', '', ${user.customPrice != null ? Number(user.customPrice) : 'null'}, '${escStr(user.condition || DIRECT_PROPOSAL_DEFAULT_CONDITION)}', '${escStr(user.language || DIRECT_PROPOSAL_DEFAULT_LANGUAGE)}')"
                             class="shrink-0 bg-green-500 hover:bg-green-600 active:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-colors w-full sm:w-auto text-center">
                         🤝 Proponer intercambio
                     </button>
@@ -11802,7 +11805,7 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
 };
 
 // Abre el modal de creación de intercambio con la carta buscada ya pre-cargada en la sección "Cartas que Busco"
-window.proposeTradeForCard = function(cardId, cardName, cardImageUrl, cardSetName, cardNumber, customPrice = null, condition = 'NM', language = 'Español') {
+window.proposeTradeForCard = function(cardId, cardName, cardImageUrl, cardSetName, cardNumber, customPrice = null, condition = DIRECT_PROPOSAL_DEFAULT_CONDITION, language = DIRECT_PROPOSAL_DEFAULT_LANGUAGE) {
     if (!currentUser) {
         showNotification('Debes iniciar sesión para proponer un intercambio', 'warning', 4000);
         showAuthModal('login');
@@ -11827,12 +11830,12 @@ window.proposeTradeForCard = function(cardId, cardName, cardImageUrl, cardSetNam
                 customPriceInput.value = customPrice != null && Number.isFinite(normalizedCustomPrice) ? normalizedCustomPrice : '';
             }
             if (wantedConditionSelect) {
-                wantedConditionSelect.value = condition || 'NM';
+                wantedConditionSelect.value = condition || DIRECT_PROPOSAL_DEFAULT_CONDITION;
                 wantedConditionSelect.disabled = true;
                 wantedConditionSelect.classList.add('bg-gray-100', 'dark:bg-gray-600', 'cursor-not-allowed');
             }
             if (wantedLanguageSelect) {
-                wantedLanguageSelect.value = language || 'Español';
+                wantedLanguageSelect.value = language || DIRECT_PROPOSAL_DEFAULT_LANGUAGE;
                 wantedLanguageSelect.disabled = true;
                 wantedLanguageSelect.classList.add('bg-gray-100', 'dark:bg-gray-600', 'cursor-not-allowed');
             }
