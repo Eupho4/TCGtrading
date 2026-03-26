@@ -71,6 +71,28 @@
       }
     },
     
+    "tradeProposals": {
+      "$userId": {
+        ".read": "$userId === auth.uid",
+        ".write": "$userId === auth.uid || (!data.exists() && newData.child('ownerUserId').val() === $userId && newData.child('fromUserId').val() === auth.uid)",
+        
+        "$proposalId": {
+          ".validate": "newData.hasChildren(['id', 'tradeId', 'fromUserId', 'status', 'createdAt'])"
+        }
+      }
+    },
+    
+    "sentTradeProposals": {
+      "$userId": {
+        ".read": "$userId === auth.uid",
+        ".write": "($userId === auth.uid && newData.child('fromUserId').val() === auth.uid) || (data.exists() && data.child('fromUserId').val() === $userId && data.child('ownerUserId').val() === auth.uid && newData.child('fromUserId').val() === $userId && newData.child('ownerUserId').val() === auth.uid)",
+        
+        "$proposalId": {
+          ".validate": "newData.hasChildren(['id', 'tradeId', 'fromUserId', 'status', 'createdAt'])"
+        }
+      }
+    },
+    
     "test": {
       // Nodo de prueba para verificar conexión
       ".read": "auth != null",

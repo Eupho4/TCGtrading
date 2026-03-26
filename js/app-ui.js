@@ -3,7 +3,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
-import { getDatabase } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
+import { getDatabase, ref, set, get, remove } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
 // Importar módulos de chat
 import ChatManager from '/js/modules/chat.js?v=33';
@@ -40,6 +40,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const realtimeDb = getDatabase(app);
 
 // ID único de tu aplicación para Firestore
 const appId = 'tcgtrade-pokemon-app';
@@ -78,6 +79,188 @@ let userCardsCache = []; // Cache para las cartas del usuario
 
 // Cache de precios para cartas en intercambios
 const tradePriceCache = new Map();
+
+function getLocalNotifications(userId) {
+    return JSON.parse(localStorage.getItem(`notifications_${userId}`) || '[]');
+}
+
+function saveLocalNotifications(userId, notifications) {
+    localStorage.setItem(`notifications_${userId}`, JSON.stringify(notifications));
+}
+
+function getLocalTradeProposals(tradeId) {
+    return JSON.parse(localStorage.getItem(`proposals_${tradeId}`) || '[]');
+}
+
+function saveLocalTradeProposals(tradeId, proposals) {
+    localStorage.setItem(`proposals_${tradeId}`, JSON.stringify(proposals));
+}
+
+function mergeRecordsById(items, timestampField = 'timestamp') {
+    const merged = new Map();
+
+    items.forEach(item => {
+        if (!item || !item.id) return;
+
+        const existing = merged.get(item.id);
+        if (!existing) {
+            merged.set(item.id, item);
+            return;
+        }
+
+        const currentTimestamp = new Date(item[timestampField] || item.createdAt || 0).getTime();
+        const existingTimestamp = new Date(existing[timestampField] || existing.createdAt || 0).getTime();
+        const preferredRecord = currentTimestamp >= existingTimestamp ? item : existing;
+        const secondaryRecord = currentTimestamp >= existingTimestamp ? existing : item;
+        merged.set(item.id, { ...secondaryRecord, ...preferredRecord });
+    });
+
+    return Array.from(merged.values()).sort((a, b) => {
+        const aTime = new Date(a[timestampField] || a.createdAt || 0).getTime();
+        const bTime = new Date(b[timestampField] || b.createdAt || 0).getTime();
+        return bTime - aTime;
+    });
+}
+
+async function getRealtimeItems(path) {
+    try {
+        const snapshot = await get(ref(realtimeDb, path));
+        if (!snapshot.exists()) return [];
+
+        return Object.values(snapshot.val() || {}).filter(Boolean);
+    } catch (error) {
+        console.warn(`⚠️ No se pudieron leer datos remotos de ${path}:`, error);
+        return [];
+    }
+}
+
+async function saveRealtimeItem(path, item) {
+    if (!item?.id) return;
+
+    try {
+        await set(ref(realtimeDb, `${path}/${item.id}`), item);
+    } catch (error) {
+        console.warn(`⚠️ No se pudo guardar el elemento remoto en ${path}:`, error);
+    }
+}
+
+async function removeRealtimeItem(path, itemId) {
+    if (!itemId) return;
+
+    try {
+        await remove(ref(realtimeDb, `${path}/${itemId}`));
+    } catch (error) {
+        console.warn(`⚠️ No se pudo eliminar el elemento remoto en ${path}:`, error);
+    }
+}
+
+async function getUserNotifications(userId) {
+    const localNotifications = getLocalNotifications(userId);
+    const remoteNotifications = await getRealtimeItems(`notifications/${userId}`);
+    return mergeRecordsById([...localNotifications, ...remoteNotifications], 'timestamp');
+}
+
+async function saveNotificationForUser(userId, notification) {
+    const updatedNotifications = mergeRecordsById([notification, ...getLocalNotifications(userId)], 'timestamp');
+    saveLocalNotifications(userId, updatedNotifications);
+    await saveRealtimeItem(`notifications/${userId}`, notification);
+}
+
+function collectLocalReceivedProposals(userId) {
+    const receivedProposals = [];
+    const userTrades = JSON.parse(localStorage.getItem(`userTrades_${userId}`) || '[]');
+
+    userTrades.forEach(trade => {
+        const proposals = getLocalTradeProposals(trade.id);
+        proposals.forEach(proposal => {
+            receivedProposals.push({
+                ...proposal,
+                tradeId: proposal.tradeId || trade.id,
+                tradeName: proposal.tradeName || trade.title,
+                ownerUserId: proposal.ownerUserId || userId
+            });
+        });
+    });
+
+    return receivedProposals;
+}
+
+function collectLocalSentProposals(userId) {
+    const sentProposals = [];
+    const proposalKeys = Object.keys(localStorage).filter(key => key.startsWith('proposals_'));
+
+    proposalKeys.forEach(key => {
+        const proposals = JSON.parse(localStorage.getItem(key) || '[]');
+        proposals
+            .filter(proposal => proposal.fromUserId === userId)
+            .forEach(proposal => {
+                sentProposals.push({
+                    ...proposal,
+                    tradeId: proposal.tradeId || key.replace('proposals_', '')
+                });
+            });
+    });
+
+    return sentProposals;
+}
+
+async function getReceivedProposalsForUser(userId) {
+    const localProposals = collectLocalReceivedProposals(userId);
+    const remoteProposals = await getRealtimeItems(`tradeProposals/${userId}`);
+    return mergeRecordsById([...localProposals, ...remoteProposals], 'createdAt');
+}
+
+async function getSentProposalsForUser(userId) {
+    const localProposals = collectLocalSentProposals(userId);
+    const remoteProposals = await getRealtimeItems(`sentTradeProposals/${userId}`);
+    return mergeRecordsById([...localProposals, ...remoteProposals], 'createdAt');
+}
+
+async function persistProposalForUsers(proposal) {
+    if (!proposal?.ownerUserId || !proposal?.fromUserId) return;
+
+    await Promise.all([
+        saveRealtimeItem(`tradeProposals/${proposal.ownerUserId}`, proposal),
+        saveRealtimeItem(`sentTradeProposals/${proposal.fromUserId}`, proposal)
+    ]);
+}
+
+async function removeProposalForUsers(proposal) {
+    if (!proposal) return;
+
+    const tasks = [];
+    if (proposal.ownerUserId) {
+        tasks.push(removeRealtimeItem(`tradeProposals/${proposal.ownerUserId}`, proposal.id));
+    }
+    if (proposal.fromUserId) {
+        tasks.push(removeRealtimeItem(`sentTradeProposals/${proposal.fromUserId}`, proposal.id));
+    }
+
+    await Promise.all(tasks);
+}
+
+async function findProposalForCurrentUser(proposalId, tradeId) {
+    const localProposal = getLocalTradeProposals(tradeId).find(proposal => proposal.id === proposalId);
+    if (localProposal) {
+        return {
+            ...localProposal,
+            tradeId: localProposal.tradeId || tradeId
+        };
+    }
+
+    if (!currentUser) return null;
+
+    const [receivedProposals, sentProposals] = await Promise.all([
+        getRealtimeItems(`tradeProposals/${currentUser.uid}`),
+        getRealtimeItems(`sentTradeProposals/${currentUser.uid}`)
+    ]);
+
+    return [...receivedProposals, ...sentProposals].find(proposal => {
+        if (proposal.id !== proposalId) return false;
+        if (!proposal.tradeId) return !tradeId;
+        return proposal.tradeId === tradeId;
+    }) || null;
+}
 // Evita que un cálculo asíncrono antiguo sobrescriba el balance más reciente
 const tradeBalanceRenderState = new WeakMap();
 
@@ -958,6 +1141,7 @@ function switchTradeTab(tabName) {
         case 'received':
             targetContent = document.getElementById('tradesReceivedContent');
             targetTab = document.getElementById('tradesReceivedTab');
+            loadReceivedProposals();
             break;
     }
 
@@ -3733,7 +3917,7 @@ window.removeProposalCard = function (button) {
 };
 
 // Función para manejar el envío de la propuesta
-window.handleProposalSubmit = function (event, originalTradeId) {
+window.handleProposalSubmit = async function (event, originalTradeId) {
     event.preventDefault();
 
     if (!currentUser) {
@@ -3758,6 +3942,7 @@ window.handleProposalSubmit = function (event, originalTradeId) {
     const proposalData = {
         id: 'proposal_' + Date.now(),
         originalTradeId: originalTradeId,
+        tradeId: originalTradeId,
         fromUserId: currentUser.uid,
         fromUserName: localStorage.getItem(`username_${currentUser.uid}`) || currentUser.email.split('@')[0],
         message: document.getElementById('proposalMessage')?.value || '',
@@ -3834,6 +4019,8 @@ window.handleProposalSubmit = function (event, originalTradeId) {
 
         // Crear notificación para el dueño del intercambio
         const ownerId = ownerKey.replace('userTrades_', '');
+        proposalData.ownerUserId = ownerId;
+        proposalData.tradeName = originalTradeData.title;
         const notification = {
             id: `notif_${Date.now()}`,
             type: 'proposal',
@@ -3847,10 +4034,7 @@ window.handleProposalSubmit = function (event, originalTradeId) {
         };
 
         // Guardar notificación
-        const notificationsKey = `notifications_${ownerId}`;
-        const notifications = JSON.parse(localStorage.getItem(notificationsKey) || '[]');
-        notifications.unshift(notification);
-        localStorage.setItem(notificationsKey, JSON.stringify(notifications));
+        await saveNotificationForUser(ownerId, notification);
 
         // Actualizar badge si es el usuario actual
         if (ownerId === currentUser.uid) {
@@ -3863,6 +4047,7 @@ window.handleProposalSubmit = function (event, originalTradeId) {
     const existingProposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
     existingProposals.push(proposalData);
     localStorage.setItem(proposalsKey, JSON.stringify(existingProposals));
+    await persistProposalForUsers(proposalData);
 
     console.log('💾 Debug handleProposalSubmit:');
     console.log('- Proposal saved with key:', proposalsKey);
@@ -3880,15 +4065,14 @@ window.handleProposalSubmit = function (event, originalTradeId) {
 };
 
 // Función para actualizar el contador de notificaciones
-function updateNotificationBadge() {
+async function updateNotificationBadge() {
     if (!currentUser) {
         const badge = document.getElementById('notificationBadge');
         if (badge) badge.classList.add('hidden');
         return;
     }
 
-    const notificationsKey = `notifications_${currentUser.uid}`;
-    const notifications = JSON.parse(localStorage.getItem(notificationsKey) || '[]');
+    const notifications = await getUserNotifications(currentUser.uid);
     const unreadCount = notifications.filter(n => !n.read).length;
 
     const badge = document.getElementById('notificationBadge');
@@ -3902,134 +4086,22 @@ function updateNotificationBadge() {
     }
 }
 
-// Función para cargar el Buzón
-function loadInbox() {
-    if (!currentUser) {
-        const container = document.getElementById('notificationsList');
-        if (container) {
-            container.innerHTML = `
-                        <div class="text-center text-gray-500 dark:text-gray-400 py-8">
-                            <p>Debes iniciar sesión para ver tu buzón</p>
-                        </div>
-                    `;
-        }
-        return;
-    }
-
-    // Cargar notificaciones
-    loadNotifications();
-
-    // Cargar propuestas recibidas
-    loadReceivedProposals();
-
-    // Cargar propuestas enviadas
-    loadSentProposals();
-}
-
-// Función para cargar notificaciones
-function loadNotifications() {
-    if (!currentUser) return;
-
-    const notificationsKey = `notifications_${currentUser.uid}`;
-    const notifications = JSON.parse(localStorage.getItem(notificationsKey) || '[]');
-
-    const container = document.getElementById('notificationsList');
-    if (!container) return;
-
-    if (notifications.length === 0) {
-        container.innerHTML = `
+function renderReceivedProposalCards(proposals, emptyMessage) {
+    if (proposals.length === 0) {
+        return `
                     <div class="text-center text-gray-500 dark:text-gray-400 py-8">
                         <span class="text-4xl">📭</span>
-                        <p class="mt-2">No tienes notificaciones</p>
+                        <p class="mt-2">${emptyMessage}</p>
                     </div>
                 `;
-        return;
     }
 
-    container.innerHTML = notifications.map(notif => `
-                <div class="notification-item bg-gray-50 dark:bg-gray-700 rounded-lg p-4 ${!notif.read ? 'border-l-4 border-purple-500' : ''}">
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1">
-                            <h4 class="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                                ${notif.title}
-                                ${!notif.read ? '<span class="bg-purple-500 text-white text-xs px-2 py-1 rounded-full">Nuevo</span>' : ''}
-                            </h4>
-                            <p class="text-gray-600 dark:text-gray-300 mt-1">${notif.message}</p>
-                            <div class="flex items-center gap-4 mt-2 text-sm text-gray-500 dark:text-gray-400">
-                                <span>De: ${notif.from}</span>
-                                <span>${formatRelativeTime(notif.timestamp)}</span>
-                            </div>
-                        </div>
-                        <div class="flex gap-2">
-                            ${notif.proposalId && notif.tradeId ? `
-                                <button onclick="viewProposalDetails('${notif.proposalId}', '${notif.tradeId}')"
-                                        class="px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white rounded text-sm">
-                                    Ver Propuesta
-                                </button>
-                            ` : ''}
-                            ${notif.tradeId ? `
-                                <button onclick="viewTradeDetails('${notif.tradeId}')"
-                                        class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm">
-                                    Ver Intercambio
-                                </button>
-                            ` : ''}
-                            ${!notif.read ? `
-                                <button onclick="markNotificationAsRead('${notif.id}')"
-                                        class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded text-sm">
-                                    Marcar como leído
-                                </button>
-                            ` : ''}
-                            <button onclick="deleteNotification('${notif.id}')"
-                                    class="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-sm"
-                                    title="Eliminar notificación">
-                                ✕
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-}
-
-// Función para cargar propuestas recibidas
-function loadReceivedProposals() {
-    if (!currentUser) return;
-
-    const container = document.getElementById('receivedProposalsList');
-    if (!container) return;
-
-    const receivedProposals = [];
-
-    // Buscar propuestas en todos los intercambios del usuario
-    const userTrades = JSON.parse(localStorage.getItem(`userTrades_${currentUser.uid}`) || '[]');
-
-    userTrades.forEach(trade => {
-        const proposalsKey = `proposals_${trade.id}`;
-        const proposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
-        proposals.forEach(proposal => {
-            receivedProposals.push({
-                ...proposal,
-                tradeName: trade.title,
-                tradeId: trade.id
-            });
-        });
-    });
-
-    if (receivedProposals.length === 0) {
-        container.innerHTML = `
-                    <div class="text-center text-gray-500 dark:text-gray-400 py-8">
-                        <span class="text-4xl">📭</span>
-                        <p class="mt-2">No has recibido propuestas</p>
-                    </div>
-                `;
-        return;
-    }
-
-    container.innerHTML = receivedProposals.map(proposal => `
+    return proposals.map(proposal => `
                 <div class="proposal-item bg-white dark:bg-gray-700 rounded-lg shadow p-4">
                     <div class="flex items-start justify-between mb-3">
                         <div>
                             <h4 class="font-semibold text-gray-900 dark:text-white">
-                                Propuesta para: ${proposal.tradeName}
+                                Propuesta para: ${proposal.tradeName || 'Intercambio'}
                             </h4>
                             <p class="text-sm text-gray-500 dark:text-gray-400">
                                 De: ${proposal.fromUserName} • ${formatRelativeTime(proposal.createdAt)}
@@ -4100,50 +4172,22 @@ function loadReceivedProposals() {
             `).join('');
 }
 
-// Función para cargar propuestas enviadas
-function loadSentProposals() {
-    if (!currentUser) return;
-
-    const container = document.getElementById('sentProposalsList');
-    if (!container) return;
-
-    const sentProposals = [];
-
-    // Buscar todas las propuestas enviadas por el usuario
-    const proposalKeys = Object.keys(localStorage).filter(key => key.startsWith('proposals_'));
-
-    console.log('🔍 Debug loadSentProposals:');
-    console.log('- Current user ID:', currentUser.uid);
-    console.log('- Proposal keys found:', proposalKeys);
-
-    proposalKeys.forEach(key => {
-        const proposals = JSON.parse(localStorage.getItem(key) || '[]');
-        console.log(`- Key ${key}:`, proposals);
-        const userProposals = proposals.filter(p => p.fromUserId === currentUser.uid);
-        console.log(`- User proposals in ${key}:`, userProposals);
-        userProposals.forEach(proposal => {
-            sentProposals.push(proposal);
-        });
-    });
-
-    console.log('- Total sent proposals found:', sentProposals);
-
-    if (sentProposals.length === 0) {
-        container.innerHTML = `
+function renderSentProposalCards(proposals) {
+    if (proposals.length === 0) {
+        return `
                     <div class="text-center text-gray-500 dark:text-gray-400 py-8">
                         <span class="text-4xl">📭</span>
                         <p class="mt-2">No has enviado propuestas</p>
                     </div>
                 `;
-        return;
     }
 
-    container.innerHTML = sentProposals.map(proposal => `
+    return proposals.map(proposal => `
                 <div class="proposal-item bg-white dark:bg-gray-700 rounded-lg shadow p-4">
                     <div class="flex items-start justify-between mb-3">
                         <div>
                             <h4 class="font-semibold text-gray-900 dark:text-white">
-                                Propuesta enviada
+                                Propuesta enviada${proposal.tradeName ? `: ${proposal.tradeName}` : ''}
                             </h4>
                             <p class="text-sm text-gray-500 dark:text-gray-400">
                                 ${formatRelativeTime(proposal.createdAt)}
@@ -4185,12 +4229,12 @@ function loadSentProposals() {
                     
                     <div class="flex gap-2">
                         ${proposal.status === 'pending' ? `
-                            <button onclick="cancelProposal('${proposal.id}', '${proposal.originalTradeId}')"
+                            <button onclick="cancelProposal('${proposal.id}', '${proposal.tradeId}')"
                                     class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded text-sm">
                                 Cancelar Propuesta
                             </button>
                         ` : ''}
-                        <button onclick="deleteSentProposal('${proposal.id}', '${proposal.originalTradeId}')"
+                        <button onclick="deleteSentProposal('${proposal.id}', '${proposal.tradeId}')"
                                 class="px-2 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded text-sm"
                                 title="Eliminar propuesta">
                             ✕
@@ -4198,6 +4242,122 @@ function loadSentProposals() {
                     </div>
                 </div>
             `).join('');
+}
+
+// Función para cargar el Buzón
+async function loadInbox() {
+    if (!currentUser) {
+        const container = document.getElementById('notificationsList');
+        if (container) {
+            container.innerHTML = `
+                        <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                            <p>Debes iniciar sesión para ver tu buzón</p>
+                        </div>
+                    `;
+        }
+        return;
+    }
+
+    await Promise.all([
+        loadNotifications(),
+        loadReceivedProposals(),
+        loadSentProposals()
+    ]);
+}
+
+// Función para cargar notificaciones
+async function loadNotifications() {
+    if (!currentUser) return;
+
+    const notifications = await getUserNotifications(currentUser.uid);
+
+    const container = document.getElementById('notificationsList');
+    if (!container) return;
+
+    if (notifications.length === 0) {
+        container.innerHTML = `
+                    <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                        <span class="text-4xl">📭</span>
+                        <p class="mt-2">No tienes notificaciones</p>
+                    </div>
+                `;
+        return;
+    }
+
+    container.innerHTML = notifications.map(notif => `
+                <div class="notification-item bg-gray-50 dark:bg-gray-700 rounded-lg p-4 ${!notif.read ? 'border-l-4 border-purple-500' : ''}">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                ${notif.title}
+                                ${!notif.read ? '<span class="bg-purple-500 text-white text-xs px-2 py-1 rounded-full">Nuevo</span>' : ''}
+                            </h4>
+                            <p class="text-gray-600 dark:text-gray-300 mt-1">${notif.message}</p>
+                            <div class="flex items-center gap-4 mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                <span>De: ${notif.from}</span>
+                                <span>${formatRelativeTime(notif.timestamp)}</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            ${notif.proposalId && notif.tradeId ? `
+                                <button onclick="viewProposalDetails('${notif.proposalId}', '${notif.tradeId}')"
+                                        class="px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white rounded text-sm">
+                                    Ver Propuesta
+                                </button>
+                            ` : ''}
+                            ${notif.tradeId ? `
+                                <button onclick="viewTradeDetails('${notif.tradeId}')"
+                                        class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm">
+                                    Ver Intercambio
+                                </button>
+                            ` : ''}
+                            ${!notif.read ? `
+                                <button onclick="markNotificationAsRead('${notif.id}')"
+                                        class="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded text-sm">
+                                    Marcar como leído
+                                </button>
+                            ` : ''}
+                            <button onclick="deleteNotification('${notif.id}')"
+                                    class="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-sm"
+                                    title="Eliminar notificación">
+                                ✕
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+}
+
+// Función para cargar propuestas recibidas
+async function loadReceivedProposals() {
+    if (!currentUser) return;
+
+    const container = document.getElementById('receivedProposalsList');
+    const receivedTradesContainer = document.getElementById('receivedTradesContainer');
+    if (!container && !receivedTradesContainer) return;
+
+    const receivedProposals = await getReceivedProposalsForUser(currentUser.uid);
+    const inboxMarkup = renderReceivedProposalCards(receivedProposals, 'No has recibido propuestas');
+    const tradesMarkup = renderReceivedProposalCards(receivedProposals, 'No has recibido propuestas de intercambio');
+
+    if (container) {
+        container.innerHTML = inboxMarkup;
+    }
+
+    if (receivedTradesContainer) {
+        receivedTradesContainer.innerHTML = tradesMarkup;
+    }
+}
+
+// Función para cargar propuestas enviadas
+async function loadSentProposals() {
+    if (!currentUser) return;
+
+    const container = document.getElementById('sentProposalsList');
+    if (!container) return;
+
+    const sentProposals = await getSentProposalsForUser(currentUser.uid);
+    container.innerHTML = renderSentProposalCards(sentProposals);
 }
 
 // Función para formatear tiempo relativo
@@ -4217,16 +4377,16 @@ function formatRelativeTime(timestamp) {
 }
 
 // Función para marcar notificación como leída
-window.markNotificationAsRead = function (notifId) {
+window.markNotificationAsRead = async function (notifId) {
     if (!currentUser) return;
 
-    const notificationsKey = `notifications_${currentUser.uid}`;
-    const notifications = JSON.parse(localStorage.getItem(notificationsKey) || '[]');
+    const notifications = await getUserNotifications(currentUser.uid);
 
     const notif = notifications.find(n => n.id === notifId);
     if (notif) {
         notif.read = true;
-        localStorage.setItem(notificationsKey, JSON.stringify(notifications));
+        saveLocalNotifications(currentUser.uid, notifications);
+        await saveRealtimeItem(`notifications/${currentUser.uid}`, notif);
         loadNotifications();
         updateNotificationBadge();
     }
@@ -4237,8 +4397,7 @@ window.deleteNotification = async function (notifId) {
     if (!currentUser) return;
 
     // Buscar la notificación para mostrar su título
-    const notificationsKey = `notifications_${currentUser.uid}`;
-    const notifications = JSON.parse(localStorage.getItem(notificationsKey) || '[]');
+    const notifications = await getUserNotifications(currentUser.uid);
     const notif = notifications.find(n => n.id === notifId);
 
     // Confirmar eliminación con modal personalizado
@@ -4253,7 +4412,8 @@ window.deleteNotification = async function (notifId) {
 
     // Filtrar la notificación a eliminar
     const updatedNotifications = notifications.filter(n => n.id !== notifId);
-    localStorage.setItem(notificationsKey, JSON.stringify(updatedNotifications));
+    saveLocalNotifications(currentUser.uid, updatedNotifications);
+    await removeRealtimeItem(`notifications/${currentUser.uid}`, notifId);
 
     // Recargar la lista de notificaciones
     loadNotifications();
@@ -4268,9 +4428,8 @@ window.deleteReceivedProposal = async function (proposalId, tradeId) {
     if (!currentUser) return;
 
     // Buscar la propuesta para mostrar información
-    const proposalsKey = `proposals_${tradeId}`;
-    const proposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
-    const proposal = proposals.find(p => p.id === proposalId);
+    const localProposal = getLocalTradeProposals(tradeId).find(p => p.id === proposalId);
+    const proposal = (await findProposalForCurrentUser(proposalId, tradeId)) || localProposal;
 
     // Confirmar eliminación con modal personalizado
     const confirmed = await showCustomConfirmModal(
@@ -4283,8 +4442,15 @@ window.deleteReceivedProposal = async function (proposalId, tradeId) {
     if (!confirmed) return;
 
     // Filtrar la propuesta a eliminar
+    const proposalsKey = `proposals_${tradeId}`;
+    const proposals = getLocalTradeProposals(tradeId);
     const updatedProposals = proposals.filter(p => p.id !== proposalId);
-    localStorage.setItem(proposalsKey, JSON.stringify(updatedProposals));
+    saveLocalTradeProposals(tradeId, updatedProposals);
+    if (proposal) {
+        await removeProposalForUsers(proposal);
+    } else {
+        await removeRealtimeItem(`tradeProposals/${currentUser.uid}`, proposalId);
+    }
 
     // Recargar la lista de propuestas recibidas
     loadReceivedProposals();
@@ -4298,9 +4464,8 @@ window.deleteSentProposal = async function (proposalId, tradeId) {
     if (!currentUser) return;
 
     // Buscar la propuesta para mostrar información
-    const proposalsKey = `proposals_${tradeId}`;
-    const proposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
-    const proposal = proposals.find(p => p.id === proposalId);
+    const localProposal = getLocalTradeProposals(tradeId).find(p => p.id === proposalId);
+    const proposal = (await findProposalForCurrentUser(proposalId, tradeId)) || localProposal;
 
     // Confirmar eliminación con modal personalizado
     const confirmed = await showCustomConfirmModal(
@@ -4313,8 +4478,15 @@ window.deleteSentProposal = async function (proposalId, tradeId) {
     if (!confirmed) return;
 
     // Filtrar la propuesta a eliminar
+    const proposalsKey = `proposals_${tradeId}`;
+    const proposals = getLocalTradeProposals(tradeId);
     const updatedProposals = proposals.filter(p => p.id !== proposalId);
-    localStorage.setItem(proposalsKey, JSON.stringify(updatedProposals));
+    saveLocalTradeProposals(tradeId, updatedProposals);
+    if (proposal) {
+        await removeProposalForUsers(proposal);
+    } else {
+        await removeRealtimeItem(`sentTradeProposals/${currentUser.uid}`, proposalId);
+    }
 
     // Recargar la lista de propuestas enviadas
     loadSentProposals();
@@ -4324,19 +4496,21 @@ window.deleteSentProposal = async function (proposalId, tradeId) {
 };
 
 // Función para rechazar propuesta
-window.rejectProposal = function (proposalId, tradeId) {
+window.rejectProposal = async function (proposalId, tradeId) {
     if (!currentUser) return;
 
     // Buscar la propuesta
     const proposalsKey = `proposals_${tradeId}`;
-    const proposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
-    const proposal = proposals.find(p => p.id === proposalId);
+    const proposals = getLocalTradeProposals(tradeId);
+    const proposal = (await findProposalForCurrentUser(proposalId, tradeId)) || proposals.find(p => p.id === proposalId);
 
     if (proposal) {
         // Actualizar estado de la propuesta
         proposal.status = 'rejected';
         proposal.rejectedAt = new Date().toISOString();
-        localStorage.setItem(proposalsKey, JSON.stringify(proposals));
+        const updatedLocalProposals = proposals.map(item => item.id === proposalId ? { ...proposal } : item);
+        saveLocalTradeProposals(tradeId, updatedLocalProposals);
+        await persistProposalForUsers(proposal);
 
         // Crear notificación para el usuario que envió la propuesta
         const notification = {
@@ -4352,33 +4526,33 @@ window.rejectProposal = function (proposalId, tradeId) {
         };
 
         // Guardar notificación para el proponente
-        const proponentNotificationsKey = `notifications_${proposal.fromUserId}`;
-        const proponentNotifications = JSON.parse(localStorage.getItem(proponentNotificationsKey) || '[]');
-        proponentNotifications.unshift(notification);
-        localStorage.setItem(proponentNotificationsKey, JSON.stringify(proponentNotifications));
+        await saveNotificationForUser(proposal.fromUserId, notification);
 
         // Mostrar confirmación
         showNotification('Propuesta rechazada. El usuario ha sido notificado.', 'info', 3000);
 
         // Recargar la lista de propuestas
         loadReceivedProposals();
+        loadSentProposals();
     }
 };
 
 // Función para aceptar propuesta
-window.acceptProposal = function (proposalId, tradeId) {
+window.acceptProposal = async function (proposalId, tradeId) {
     if (!currentUser) return;
 
     // Buscar la propuesta
     const proposalsKey = `proposals_${tradeId}`;
-    const proposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
-    const proposal = proposals.find(p => p.id === proposalId);
+    const proposals = getLocalTradeProposals(tradeId);
+    const proposal = (await findProposalForCurrentUser(proposalId, tradeId)) || proposals.find(p => p.id === proposalId);
 
     if (proposal) {
         // Actualizar estado de la propuesta
         proposal.status = 'accepted';
         proposal.acceptedAt = new Date().toISOString();
-        localStorage.setItem(proposalsKey, JSON.stringify(proposals));
+        const updatedLocalProposals = proposals.map(item => item.id === proposalId ? { ...proposal } : item);
+        saveLocalTradeProposals(tradeId, updatedLocalProposals);
+        await persistProposalForUsers(proposal);
 
         // Crear notificación para el usuario que envió la propuesta
         const notification = {
@@ -4394,10 +4568,7 @@ window.acceptProposal = function (proposalId, tradeId) {
         };
 
         // Guardar notificación para el proponente
-        const proponentNotificationsKey = `notifications_${proposal.fromUserId}`;
-        const proponentNotifications = JSON.parse(localStorage.getItem(proponentNotificationsKey) || '[]');
-        proponentNotifications.unshift(notification);
-        localStorage.setItem(proponentNotificationsKey, JSON.stringify(proponentNotifications));
+        await saveNotificationForUser(proposal.fromUserId, notification);
 
         // Marcar el intercambio como completado Y actualizar cartas con las de la propuesta
         const userKeys = Object.keys(localStorage).filter(key => key.startsWith('userTrades_'));
@@ -4427,17 +4598,16 @@ window.acceptProposal = function (proposalId, tradeId) {
 
         // Recargar la lista de propuestas
         loadReceivedProposals();
+        loadSentProposals();
     }
 };
 
 // Función para ver detalles de propuesta
-window.viewProposalDetails = function (proposalId, tradeId) {
+window.viewProposalDetails = async function (proposalId, tradeId) {
     if (!currentUser) return;
 
     // Buscar la propuesta
-    const proposalsKey = `proposals_${tradeId}`;
-    const proposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
-    const proposal = proposals.find(p => p.id === proposalId);
+    const proposal = await findProposalForCurrentUser(proposalId, tradeId);
 
     if (!proposal) {
         showNotification('No se encontró la propuesta', 'error');
@@ -4613,18 +4783,24 @@ window.viewProposalDetails = function (proposalId, tradeId) {
 };
 
 // Función para cancelar propuesta enviada
-window.cancelProposal = function (proposalId, tradeId) {
+window.cancelProposal = async function (proposalId, tradeId) {
     if (!currentUser) return;
 
     // Buscar la propuesta
     const proposalsKey = `proposals_${tradeId}`;
-    const proposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
+    const proposals = getLocalTradeProposals(tradeId);
     const proposalIndex = proposals.findIndex(p => p.id === proposalId);
 
     if (proposalIndex !== -1) {
-        // Eliminar la propuesta
+        const fullProposal = (await findProposalForCurrentUser(proposalId, tradeId)) || proposals[proposalIndex];
         proposals.splice(proposalIndex, 1);
-        localStorage.setItem(proposalsKey, JSON.stringify(proposals));
+        // Eliminar la propuesta
+        saveLocalTradeProposals(tradeId, proposals);
+        if (fullProposal) {
+            await removeProposalForUsers(fullProposal);
+        } else {
+            await removeRealtimeItem(`sentTradeProposals/${currentUser.uid}`, proposalId);
+        }
 
         showNotification('Propuesta cancelada', 'success', 3000);
 
