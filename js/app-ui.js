@@ -3027,6 +3027,7 @@ function proposeTrade(tradeId) {
                     <!-- Content -->
                     <div class="overflow-y-auto max-h-[calc(90vh-120px)] p-6">
                         <form id="proposalForm" onsubmit="handleProposalSubmit(event, '${tradeId}')">
+                            <input type="hidden" id="proposalOwnerId" value="${originalTrade.userId || ''}">
                             <!-- Información del intercambio original -->
                             <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 mb-6">
                                 <h3 class="font-bold text-gray-900 dark:text-white mb-3">
@@ -3732,7 +3733,40 @@ window.removeProposalCard = function (button) {
     refreshProposalPricing();
 };
 
-// Función para manejar el envío de la propuesta
+/**
+ * Resolves the recipient context for a proposal submission.
+ * Uses the original trade data when available, falls back to the hidden owner field
+ * stored in the proposal form, and finally derives the owner from the localStorage key.
+ * Returns the recipient user ID, the display name to show in the UI, and the trade title.
+ */
+function resolveProposalOwnerContext(originalTradeData) {
+    const fallbackOwnerId = document.getElementById('proposalOwnerId')?.value || '';
+    const ownerIdFromTrade = originalTradeData?.userId || '';
+    const ownerIdFromKey = originalTradeData?.ownerKey ? originalTradeData.ownerKey.replace('userTrades_', '') : '';
+
+    return {
+        ownerId: ownerIdFromTrade || fallbackOwnerId || ownerIdFromKey,
+        ownerDisplayName: originalTradeData?.userName || originalTradeData?.user || 'Usuario',
+        tradeName: originalTradeData?.title || 'Intercambio sin título'
+    };
+}
+
+function generateProposalId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `proposal_${crypto.randomUUID()}`;
+    }
+
+    return 'proposal_' + Date.now() + '_' + Math.random().toString(36).slice(2, 11);
+}
+
+function getUserDisplayName(user) {
+    if (!user?.uid) return 'Usuario';
+
+    return localStorage.getItem(`username_${user.uid}`)
+        || user.displayName
+        || (typeof user.email === 'string' ? user.email.split('@')[0] : 'Usuario');
+}
+
 window.handleProposalSubmit = function (event, originalTradeId) {
     event.preventDefault();
 
@@ -3754,12 +3788,23 @@ window.handleProposalSubmit = function (event, originalTradeId) {
 
     const originalTradeData = allTrades.find(t => t.id === originalTradeId);
 
+    const {
+        ownerId,
+        ownerDisplayName,
+        tradeName
+    } = resolveProposalOwnerContext(originalTradeData);
+    const generatedProposalId = generateProposalId();
+    const senderDisplayName = getUserDisplayName(currentUser);
+
     // Recopilar datos de la propuesta
     const proposalData = {
-        id: 'proposal_' + Date.now(),
+        id: generatedProposalId,
         originalTradeId: originalTradeId,
         fromUserId: currentUser.uid,
-        fromUserName: localStorage.getItem(`username_${currentUser.uid}`) || currentUser.email.split('@')[0],
+        fromUserName: senderDisplayName,
+        toUserId: ownerId,
+        toUserName: ownerDisplayName,
+        tradeName,
         message: document.getElementById('proposalMessage')?.value || '',
         offeredCards: [],
         wantedCards: [],
@@ -3833,12 +3878,11 @@ window.handleProposalSubmit = function (event, originalTradeId) {
         }
 
         // Crear notificación para el dueño del intercambio
-        const ownerId = ownerKey.replace('userTrades_', '');
         const notification = {
             id: `notif_${Date.now()}`,
             type: 'proposal',
             title: '📬 Nueva propuesta recibida',
-            message: `${proposalData.fromUserName} ha enviado una propuesta para tu intercambio "${originalTradeData.title}"`,
+            message: `${proposalData.fromUserName} ha enviado una propuesta para tu intercambio "${tradeName}"`,
             tradeId: originalTradeId,
             proposalId: proposalData.id,
             from: proposalData.fromUserName,
@@ -3998,20 +4042,37 @@ function loadReceivedProposals() {
     if (!container) return;
 
     const receivedProposals = [];
-
-    // Buscar propuestas en todos los intercambios del usuario
     const userTrades = JSON.parse(localStorage.getItem(`userTrades_${currentUser.uid}`) || '[]');
+    const userTradesById = new Map(userTrades.map(trade => [trade.id, trade]));
 
-    userTrades.forEach(trade => {
-        const proposalsKey = `proposals_${trade.id}`;
+    // Buscar propuestas guardadas para el usuario actual
+    const proposalKeys = Object.keys(localStorage).filter(key => key.startsWith('proposals_'));
+
+    proposalKeys.forEach(proposalsKey => {
+        const tradeId = proposalsKey.replace('proposals_', '');
         const proposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
         proposals.forEach(proposal => {
+            const relatedTrade = userTradesById.get(tradeId);
+            const isDirectRecipient = proposal.toUserId === currentUser.uid;
+            // Compatibility with legacy proposals that did not store the recipient explicitly.
+            const isLegacyProposalForUserTrade = !proposal.toUserId && !!relatedTrade;
+
+            if (!isDirectRecipient && !isLegacyProposalForUserTrade) {
+                return;
+            }
+
             receivedProposals.push({
                 ...proposal,
-                tradeName: trade.title,
-                tradeId: trade.id
+                tradeName: proposal.tradeName || relatedTrade?.title || 'Intercambio sin título',
+                tradeId
             });
         });
+    });
+
+    receivedProposals.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
     });
 
     if (receivedProposals.length === 0) {
