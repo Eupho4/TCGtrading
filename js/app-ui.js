@@ -3733,7 +3733,40 @@ window.removeProposalCard = function (button) {
     refreshProposalPricing();
 };
 
-// Función para manejar el envío de la propuesta
+/**
+ * Resolves the recipient context for a proposal submission.
+ * Uses the original trade data when available, falls back to the hidden owner field
+ * stored in the proposal form, and finally derives the owner from the localStorage key.
+ * Returns the recipient user ID, the display name to show in the UI, and the trade title.
+ */
+function resolveProposalOwnerContext(originalTradeData) {
+    const fallbackOwnerId = document.getElementById('proposalOwnerId')?.value || '';
+    const ownerIdFromTrade = originalTradeData?.userId || '';
+    const ownerIdFromKey = originalTradeData?.ownerKey ? originalTradeData.ownerKey.replace('userTrades_', '') : '';
+
+    return {
+        ownerId: ownerIdFromTrade || fallbackOwnerId || ownerIdFromKey,
+        ownerDisplayName: originalTradeData?.userName || originalTradeData?.user || 'Usuario',
+        tradeName: originalTradeData?.title || 'Intercambio sin título'
+    };
+}
+
+function generateProposalId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `proposal_${crypto.randomUUID()}`;
+    }
+
+    return 'proposal_' + Date.now() + '_' + Math.random().toString(36).slice(2, 11);
+}
+
+function getUserDisplayName(user) {
+    if (!user?.uid) return 'Usuario';
+
+    return localStorage.getItem(`username_${user.uid}`)
+        || user.displayName
+        || (typeof user.email === 'string' ? user.email.split('@')[0] : 'Usuario');
+}
+
 window.handleProposalSubmit = function (event, originalTradeId) {
     event.preventDefault();
 
@@ -3755,18 +3788,22 @@ window.handleProposalSubmit = function (event, originalTradeId) {
 
     const originalTradeData = allTrades.find(t => t.id === originalTradeId);
 
-    const fallbackOwnerId = document.getElementById('proposalOwnerId')?.value || '';
-    const ownerId = originalTradeData?.userId || fallbackOwnerId || (originalTradeData?.ownerKey ? originalTradeData.ownerKey.replace('userTrades_', '') : '');
-    const tradeName = originalTradeData?.title || 'Intercambio sin título';
+    const {
+        ownerId,
+        ownerDisplayName,
+        tradeName
+    } = resolveProposalOwnerContext(originalTradeData);
+    const generatedProposalId = generateProposalId();
+    const senderDisplayName = getUserDisplayName(currentUser);
 
     // Recopilar datos de la propuesta
     const proposalData = {
-        id: 'proposal_' + Date.now(),
+        id: generatedProposalId,
         originalTradeId: originalTradeId,
         fromUserId: currentUser.uid,
-        fromUserName: localStorage.getItem(`username_${currentUser.uid}`) || currentUser.email.split('@')[0],
+        fromUserName: senderDisplayName,
         toUserId: ownerId,
-        toUserName: originalTradeData?.userName || originalTradeData?.user || 'Usuario',
+        toUserName: ownerDisplayName,
         tradeName,
         message: document.getElementById('proposalMessage')?.value || '',
         offeredCards: [],
@@ -4006,7 +4043,7 @@ function loadReceivedProposals() {
 
     const receivedProposals = [];
     const userTrades = JSON.parse(localStorage.getItem(`userTrades_${currentUser.uid}`) || '[]');
-    const userTradeMap = new Map(userTrades.map(trade => [trade.id, trade]));
+    const userTradesById = new Map(userTrades.map(trade => [trade.id, trade]));
 
     // Buscar propuestas guardadas para el usuario actual
     const proposalKeys = Object.keys(localStorage).filter(key => key.startsWith('proposals_'));
@@ -4015,11 +4052,12 @@ function loadReceivedProposals() {
         const tradeId = proposalsKey.replace('proposals_', '');
         const proposals = JSON.parse(localStorage.getItem(proposalsKey) || '[]');
         proposals.forEach(proposal => {
-            const relatedTrade = userTradeMap.get(tradeId);
+            const relatedTrade = userTradesById.get(tradeId);
             const isDirectRecipient = proposal.toUserId === currentUser.uid;
-            const isLegacyRecipient = !proposal.toUserId && !!relatedTrade;
+            // Compatibility with legacy proposals that did not store the recipient explicitly.
+            const isLegacyProposalForUserTrade = !proposal.toUserId && !!relatedTrade;
 
-            if (!isDirectRecipient && !isLegacyRecipient) {
+            if (!isDirectRecipient && !isLegacyProposalForUserTrade) {
                 return;
             }
 
@@ -4031,7 +4069,11 @@ function loadReceivedProposals() {
         });
     });
 
-    receivedProposals.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    receivedProposals.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+    });
 
     if (receivedProposals.length === 0) {
         container.innerHTML = `
