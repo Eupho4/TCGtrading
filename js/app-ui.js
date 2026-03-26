@@ -110,7 +110,9 @@ function mergeRecordsById(items, timestampField = 'timestamp') {
 
         const currentTimestamp = new Date(item[timestampField] || item.createdAt || 0).getTime();
         const existingTimestamp = new Date(existing[timestampField] || existing.createdAt || 0).getTime();
-        merged.set(item.id, currentTimestamp >= existingTimestamp ? { ...existing, ...item } : { ...item, ...existing });
+        const preferredRecord = currentTimestamp >= existingTimestamp ? item : existing;
+        const secondaryRecord = currentTimestamp >= existingTimestamp ? existing : item;
+        merged.set(item.id, { ...secondaryRecord, ...preferredRecord });
     });
 
     return Array.from(merged.values()).sort((a, b) => {
@@ -253,7 +255,11 @@ async function findProposalForCurrentUser(proposalId, tradeId) {
         getRealtimeItems(`sentTradeProposals/${currentUser.uid}`)
     ]);
 
-    return [...receivedProposals, ...sentProposals].find(proposal => proposal.id === proposalId && (proposal.tradeId || tradeId) === tradeId) || null;
+    return [...receivedProposals, ...sentProposals].find(proposal => {
+        if (proposal.id !== proposalId) return false;
+        if (!proposal.tradeId) return !tradeId;
+        return proposal.tradeId === tradeId;
+    }) || null;
 }
 // Evita que un cálculo asíncrono antiguo sobrescriba el balance más reciente
 const tradeBalanceRenderState = new WeakMap();
@@ -4422,7 +4428,8 @@ window.deleteReceivedProposal = async function (proposalId, tradeId) {
     if (!currentUser) return;
 
     // Buscar la propuesta para mostrar información
-    const proposal = await findProposalForCurrentUser(proposalId, tradeId);
+    const localProposal = getLocalTradeProposals(tradeId).find(p => p.id === proposalId);
+    const proposal = (await findProposalForCurrentUser(proposalId, tradeId)) || localProposal;
 
     // Confirmar eliminación con modal personalizado
     const confirmed = await showCustomConfirmModal(
@@ -4439,7 +4446,11 @@ window.deleteReceivedProposal = async function (proposalId, tradeId) {
     const proposals = getLocalTradeProposals(tradeId);
     const updatedProposals = proposals.filter(p => p.id !== proposalId);
     saveLocalTradeProposals(tradeId, updatedProposals);
-    await removeProposalForUsers(proposal || { id: proposalId, tradeId, ownerUserId: currentUser.uid });
+    if (proposal) {
+        await removeProposalForUsers(proposal);
+    } else {
+        await removeRealtimeItem(`tradeProposals/${currentUser.uid}`, proposalId);
+    }
 
     // Recargar la lista de propuestas recibidas
     loadReceivedProposals();
@@ -4453,7 +4464,8 @@ window.deleteSentProposal = async function (proposalId, tradeId) {
     if (!currentUser) return;
 
     // Buscar la propuesta para mostrar información
-    const proposal = await findProposalForCurrentUser(proposalId, tradeId);
+    const localProposal = getLocalTradeProposals(tradeId).find(p => p.id === proposalId);
+    const proposal = (await findProposalForCurrentUser(proposalId, tradeId)) || localProposal;
 
     // Confirmar eliminación con modal personalizado
     const confirmed = await showCustomConfirmModal(
@@ -4470,7 +4482,11 @@ window.deleteSentProposal = async function (proposalId, tradeId) {
     const proposals = getLocalTradeProposals(tradeId);
     const updatedProposals = proposals.filter(p => p.id !== proposalId);
     saveLocalTradeProposals(tradeId, updatedProposals);
-    await removeProposalForUsers(proposal || { id: proposalId, tradeId, fromUserId: currentUser.uid });
+    if (proposal) {
+        await removeProposalForUsers(proposal);
+    } else {
+        await removeRealtimeItem(`sentTradeProposals/${currentUser.uid}`, proposalId);
+    }
 
     // Recargar la lista de propuestas enviadas
     loadSentProposals();
@@ -4492,7 +4508,7 @@ window.rejectProposal = async function (proposalId, tradeId) {
         // Actualizar estado de la propuesta
         proposal.status = 'rejected';
         proposal.rejectedAt = new Date().toISOString();
-        const updatedLocalProposals = proposals.map(item => item.id === proposalId ? { ...item, ...proposal } : item);
+        const updatedLocalProposals = proposals.map(item => item.id === proposalId ? { ...proposal } : item);
         saveLocalTradeProposals(tradeId, updatedLocalProposals);
         await persistProposalForUsers(proposal);
 
@@ -4534,7 +4550,7 @@ window.acceptProposal = async function (proposalId, tradeId) {
         // Actualizar estado de la propuesta
         proposal.status = 'accepted';
         proposal.acceptedAt = new Date().toISOString();
-        const updatedLocalProposals = proposals.map(item => item.id === proposalId ? { ...item, ...proposal } : item);
+        const updatedLocalProposals = proposals.map(item => item.id === proposalId ? { ...proposal } : item);
         saveLocalTradeProposals(tradeId, updatedLocalProposals);
         await persistProposalForUsers(proposal);
 
@@ -4776,10 +4792,15 @@ window.cancelProposal = async function (proposalId, tradeId) {
     const proposalIndex = proposals.findIndex(p => p.id === proposalId);
 
     if (proposalIndex !== -1) {
-        const [proposal] = proposals.splice(proposalIndex, 1);
+        const fullProposal = (await findProposalForCurrentUser(proposalId, tradeId)) || proposals[proposalIndex];
+        proposals.splice(proposalIndex, 1);
         // Eliminar la propuesta
         saveLocalTradeProposals(tradeId, proposals);
-        await removeProposalForUsers(proposal || { id: proposalId, tradeId, fromUserId: currentUser.uid });
+        if (fullProposal) {
+            await removeProposalForUsers(fullProposal);
+        } else {
+            await removeRealtimeItem(`sentTradeProposals/${currentUser.uid}`, proposalId);
+        }
 
         showNotification('Propuesta cancelada', 'success', 3000);
 
