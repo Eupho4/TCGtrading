@@ -78,6 +78,7 @@ let userCardsCache = []; // Cache para las cartas del usuario
 
 // Cache de precios para cartas en intercambios
 const tradePriceCache = new Map();
+// Evita que un cálculo asíncrono antiguo sobrescriba el balance más reciente
 const tradeBalanceRenderState = new WeakMap();
 
 // Etiquetas de fuentes de precios
