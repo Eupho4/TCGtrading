@@ -253,6 +253,16 @@ function getTradeCardPriceMarkup(card) {
     return `<div data-card-price data-card-id="${card.id || ''}" data-card-name="${card.name || ''}"></div>`;
 }
 
+// Función para mostrar los detalles visibles de una carta en resúmenes de intercambio
+function getTradeCardVariantSummary(card) {
+    const details = [
+        card?.condition || 'NM',
+        card?.language || 'Español'
+    ];
+
+    return ` (${details.join(' • ')})`;
+}
+
 // Función para recopilar cartas válidas del modal de crear intercambio
 function collectCreateTradeCards(type) {
     const container = document.getElementById(type === 'offered' ? 'offeredCardsContainer' : 'wantedCardsContainer');
@@ -4034,7 +4044,7 @@ function loadReceivedProposals() {
                                 ${proposal.offeredCards.map(card => `
                                     <li class="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
                                         ${card.image ? `<img src="${card.image}" class="w-8 h-10 object-contain rounded">` : '🎴'}
-                                        ${card.name} (${card.condition || 'NM'})
+                                        ${card.name}${getTradeCardVariantSummary(card)}
                                     </li>
                                 `).join('')}
                             </ul>
@@ -4045,7 +4055,7 @@ function loadReceivedProposals() {
                                 ${proposal.wantedCards.map(card => `
                                     <li class="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
                                         ${card.image ? `<img src="${card.image}" class="w-8 h-10 object-contain rounded">` : '🎴'}
-                                        ${card.name} (${card.condition || 'NM'})
+                                        ${card.name}${getTradeCardVariantSummary(card)}
                                     </li>
                                 `).join('')}
                             </ul>
@@ -4148,7 +4158,7 @@ function loadSentProposals() {
                                 ${proposal.offeredCards.map(card => `
                                     <li class="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
                                         ${card.image ? `<img src="${card.image}" class="w-8 h-10 object-contain rounded">` : '🎴'}
-                                        ${card.name} (${card.condition || 'NM'})
+                                        ${card.name}${getTradeCardVariantSummary(card)}
                                     </li>
                                 `).join('')}
                             </ul>
@@ -4159,7 +4169,7 @@ function loadSentProposals() {
                                 ${proposal.wantedCards.map(card => `
                                     <li class="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
                                         ${card.image ? `<img src="${card.image}" class="w-8 h-10 object-contain rounded">` : '🎴'}
-                                        ${card.name} (${card.condition || 'NM'})
+                                        ${card.name}${getTradeCardVariantSummary(card)}
                                     </li>
                                 `).join('')}
                             </ul>
@@ -4494,7 +4504,7 @@ window.viewProposalDetails = function (proposalId, tradeId) {
                                         <ul class="mt-1 space-y-1">
                                             ${originalTrade.offeredCards.map(card => `
                                                 <li class="text-gray-600 dark:text-gray-400">
-                                                    • ${card.name} ${card.condition ? `(${card.condition})` : ''}
+                                                    • ${card.name}${getTradeCardVariantSummary(card)}
                                                 </li>
                                             `).join('')}
                                         </ul>
@@ -4504,7 +4514,7 @@ window.viewProposalDetails = function (proposalId, tradeId) {
                                         <ul class="mt-1 space-y-1">
                                             ${originalTrade.wantedCards.map(card => `
                                                 <li class="text-gray-600 dark:text-gray-400">
-                                                    • ${card.name} ${card.condition ? `(${card.condition})` : ''}
+                                                    • ${card.name}${getTradeCardVariantSummary(card)}
                                                 </li>
                                             `).join('')}
                                         </ul>
