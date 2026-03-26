@@ -78,6 +78,7 @@ let userCardsCache = []; // Cache para las cartas del usuario
 
 // Cache de precios para cartas en intercambios
 const tradePriceCache = new Map();
+const tradeBalanceRenderState = new WeakMap();
 
 // Etiquetas de fuentes de precios
 const PRICE_LABEL_CARDMARKET = 'CM';
@@ -170,7 +171,8 @@ async function loadCollectionMarketPrices(container) {
 
 // Resolves the best available EUR price for a single trade card
 async function resolveCardPrice(card) {
-    if (card.customPrice != null) return card.customPrice;
+    const customPrice = parseTradeCustomPrice(card?.customPrice);
+    if (customPrice !== null) return customPrice;
     const prices = await fetchCardPrice(card.id, card.name);
     return prices?.cardmarket ?? null;
 }
@@ -180,6 +182,8 @@ async function resolveCardPrice(card) {
 // wantedCards:  cards the trade owner wants
 async function renderTradeBalance(balanceEl, offeredCards, wantedCards) {
     if (!balanceEl) return;
+    const renderId = (tradeBalanceRenderState.get(balanceEl) || 0) + 1;
+    tradeBalanceRenderState.set(balanceEl, renderId);
 
     const offered = offeredCards || [];
     const wanted  = wantedCards  || [];
@@ -188,6 +192,8 @@ async function renderTradeBalance(balanceEl, offeredCards, wantedCards) {
         Promise.all(offered.map(resolveCardPrice)),
         Promise.all(wanted.map(resolveCardPrice))
     ]);
+
+    if (tradeBalanceRenderState.get(balanceEl) !== renderId) return;
 
     const offeredKnown = offeredPrices.filter(p => p !== null);
     const wantedKnown  = wantedPrices.filter(p => p !== null);
