@@ -3,7 +3,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
-import { getDatabase, ref, set, get, remove } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
+import { getDatabase, ref, set, get, remove, onValue } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
 // Importar módulos de chat
 import ChatManager from '/js/modules/chat.js?v=33';
@@ -79,6 +79,9 @@ let userCardsCache = []; // Cache para las cartas del usuario
 
 // Cache de precios para cartas en intercambios
 const tradePriceCache = new Map();
+let notificationsListenerUnsubscribe = null;
+let receivedProposalsListenerUnsubscribe = null;
+let knownUnreadNotificationIds = new Set();
 
 function getLocalNotifications(userId) {
     return JSON.parse(localStorage.getItem(`notifications_${userId}`) || '[]');
@@ -164,6 +167,79 @@ async function saveNotificationForUser(userId, notification) {
     const updatedNotifications = mergeRecordsById([notification, ...getLocalNotifications(userId)], 'timestamp');
     saveLocalNotifications(userId, updatedNotifications);
     await saveRealtimeItem(`notifications/${userId}`, notification);
+}
+
+function stopUserInboxListeners() {
+    if (typeof notificationsListenerUnsubscribe === 'function') {
+        notificationsListenerUnsubscribe();
+        notificationsListenerUnsubscribe = null;
+    }
+
+    if (typeof receivedProposalsListenerUnsubscribe === 'function') {
+        receivedProposalsListenerUnsubscribe();
+        receivedProposalsListenerUnsubscribe = null;
+    }
+
+    knownUnreadNotificationIds = new Set();
+}
+
+function startUserInboxListeners(userId) {
+    if (!userId) return;
+
+    stopUserInboxListeners();
+
+    let isInitialNotificationsSnapshot = true;
+    notificationsListenerUnsubscribe = onValue(ref(realtimeDb, `notifications/${userId}`), (snapshot) => {
+        const remoteNotifications = snapshot.exists()
+            ? Object.values(snapshot.val() || {}).filter(Boolean)
+            : [];
+        const mergedNotifications = mergeRecordsById([
+            ...getLocalNotifications(userId),
+            ...remoteNotifications
+        ], 'timestamp');
+
+        saveLocalNotifications(userId, mergedNotifications);
+
+        const unreadNotificationIds = new Set(
+            mergedNotifications
+                .filter(notification => !notification.read)
+                .map(notification => notification.id)
+        );
+
+        if (isInitialNotificationsSnapshot) {
+            knownUnreadNotificationIds = unreadNotificationIds;
+            isInitialNotificationsSnapshot = false;
+        } else {
+            const newUnreadNotifications = mergedNotifications.filter(notification =>
+                !notification.read && !knownUnreadNotificationIds.has(notification.id)
+            );
+
+            if (newUnreadNotifications.length > 0) {
+                const latestNotification = newUnreadNotifications.sort((a, b) =>
+                    new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()
+                )[0];
+
+                showNotification(
+                    latestNotification.message || latestNotification.title || 'Has recibido una nueva notificación',
+                    'info',
+                    5000
+                );
+            }
+
+            knownUnreadNotificationIds = unreadNotificationIds;
+        }
+
+        updateNotificationBadge();
+        if (document.getElementById('notificationsList')) {
+            loadNotifications();
+        }
+    });
+
+    receivedProposalsListenerUnsubscribe = onValue(ref(realtimeDb, `tradeProposals/${userId}`), () => {
+        if (document.getElementById('receivedProposalsList') || document.getElementById('receivedTradesContainer')) {
+            loadReceivedProposals();
+        }
+    });
 }
 
 function collectLocalReceivedProposals(userId) {
@@ -9502,6 +9578,12 @@ document.addEventListener('DOMContentLoaded', () => {
         currentUser = user;
         window.currentUser = user; // Actualizar referencia global
         console.log('🔐 onAuthStateChanged ejecutado. Usuario:', !!user, user?.email);
+
+        if (user) {
+            startUserInboxListeners(user.uid);
+        } else {
+            stopUserInboxListeners();
+        }
 
         // Debug: Verificar localStorage al cambiar de usuario
         if (user) {
