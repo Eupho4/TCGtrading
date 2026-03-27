@@ -3337,10 +3337,65 @@ function proposeTrade(tradeId) {
     refreshProposalPricing();
 }
 
+function getProposalCardsContainer(type) {
+    return document.getElementById(`proposal${type === 'offered' ? 'Offered' : 'Wanted'}CardsContainer`);
+}
+
+function generateProposalCardUniqueId(type) {
+    const proposalType = type === 'wanted' ? 'wanted' : 'offered';
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return `proposal_${proposalType}_${window.crypto.randomUUID()}`;
+    }
+    return `proposal_${proposalType}_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function getProposalCardNameInput(cardElement) {
+    if (!cardElement?.dataset?.uniqueId) return null;
+    return cardElement.querySelector(`input[name="${cardElement.dataset.uniqueId}_name"]`);
+}
+
+function getProposalCardType(cardElement) {
+    const cardType = cardElement?.dataset?.cardType;
+    if (cardType === 'offered' || cardType === 'wanted') {
+        return cardType;
+    }
+
+    const containerId = cardElement?.parentElement?.id;
+    if (containerId === 'proposalOfferedCardsContainer') return 'offered';
+    if (containerId === 'proposalWantedCardsContainer') return 'wanted';
+    return null;
+}
+
+function isEmptyEditableProposalCard(cardElement) {
+    const nameInput = getProposalCardNameInput(cardElement);
+    return !!(nameInput && !nameInput.readOnly && !nameInput.value.trim());
+}
+
+function getEmptyEditableProposalCard(type) {
+    const container = getProposalCardsContainer(type);
+    if (!container) return null;
+
+    return Array.from(container.querySelectorAll('.proposal-card')).find(isEmptyEditableProposalCard) || null;
+}
+
+function ensureProposalEditableCard(type, existingEmptyCard = null) {
+    const container = getProposalCardsContainer(type);
+    if (!container) return null;
+
+    if (existingEmptyCard) return existingEmptyCard;
+
+    const currentEmptyCard = getEmptyEditableProposalCard(type);
+    if (currentEmptyCard) return currentEmptyCard;
+
+    const cardHtml = createProposalCardInput(type, container.children.length, {}, false, generateProposalCardUniqueId(type));
+    container.insertAdjacentHTML('beforeend', cardHtml);
+    return container.lastElementChild;
+}
+
 // Función para pre-cargar las cartas en la propuesta
 function preloadProposalCards(originalTrade) {
-    const offeredContainer = document.getElementById('proposalOfferedCardsContainer');
-    const wantedContainer = document.getElementById('proposalWantedCardsContainer');
+    const offeredContainer = getProposalCardsContainer('offered');
+    const wantedContainer = getProposalCardsContainer('wanted');
 
     console.log('📋 Pre-cargando cartas para propuesta:', originalTrade);
 
@@ -3362,12 +3417,14 @@ function preloadProposalCards(originalTrade) {
         wantedContainer.insertAdjacentHTML('beforeend', cardHtml);
     });
 
+    ensureProposalEditableCard('offered');
+    ensureProposalEditableCard('wanted');
     refreshProposalPricing();
 }
 
 // Función para crear un input de carta en la propuesta
-function createProposalCardInput(type, index, cardData = {}, isPreloaded = false) {
-    const uniqueId = `proposal_${type}_${Date.now()}_${index}`;
+function createProposalCardInput(type, index, cardData = {}, isPreloaded = false, providedUniqueId = null) {
+    const uniqueId = providedUniqueId ?? generateProposalCardUniqueId(type);
 
     // Asegurar que la condición tenga un valor por defecto
     if (!cardData.condition) {
@@ -3384,7 +3441,7 @@ function createProposalCardInput(type, index, cardData = {}, isPreloaded = false
     });
 
     return `
-                <div class="proposal-card bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600" data-unique-id="${uniqueId}">
+                <div class="proposal-card bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600" data-unique-id="${uniqueId}" data-card-type="${type}">
                     <div class="flex items-center gap-3">
                         ${cardData.image ? `
                             <img src="${cardData.image}" 
@@ -3465,16 +3522,26 @@ function createProposalCardInput(type, index, cardData = {}, isPreloaded = false
 
 // Función para añadir carta a la propuesta
 window.addCardToProposal = function (type) {
-    const container = document.getElementById(`proposal${type === 'offered' ? 'Offered' : 'Wanted'}CardsContainer`);
+    const container = getProposalCardsContainer(type);
     if (!container) {
         console.error('❌ Container not found:', `proposal${type === 'offered' ? 'Offered' : 'Wanted'}CardsContainer`);
         return;
     }
-    const index = container.children.length;
-    console.log('➕ Añadiendo carta:', { type, index, currentCards: index });
-    const cardHtml = createProposalCardInput(type, index);
-    container.insertAdjacentHTML('beforeend', cardHtml);
-    console.log('✅ Carta añadida. Total ahora:', container.children.length);
+
+    const existingEmptyCard = getEmptyEditableProposalCard(type);
+    const emptyCard = ensureProposalEditableCard(type, existingEmptyCard);
+    const nameInput = emptyCard ? getProposalCardNameInput(emptyCard) : null;
+
+    console.log('➕ Preparando carta adicional en propuesta:', {
+        type,
+        currentCards: container.children.length,
+        reusedEmptyCard: !!existingEmptyCard
+    });
+
+    if (nameInput) {
+        nameInput.focus();
+    }
+
     refreshProposalPricing();
 };
 
@@ -3683,6 +3750,10 @@ window.selectProposalCard = function (uniqueId, cardId, cardName, cardImage, set
         resultsContainer.classList.add('hidden');
     }
 
+    const cardType = getProposalCardType(cardElement);
+    if (cardType) {
+        ensureProposalEditableCard(cardType);
+    }
     refreshProposalPricing();
 };
 
@@ -3853,7 +3924,7 @@ window.selectFromMyCardsToProposal = function (type, cardId, cardName, cardImage
     });
 
     const containerId = `proposal${type === 'offered' ? 'Offered' : 'Wanted'}CardsContainer`;
-    const container = document.getElementById(containerId);
+    const container = getProposalCardsContainer(type);
 
     if (!container) {
         console.error('❌ No se encontró el contenedor:', containerId);
@@ -3918,6 +3989,7 @@ window.selectFromMyCardsToProposal = function (type, cardId, cardName, cardImage
 
     // Mostrar notificación de éxito
     showNotification('Carta añadida desde tu colección', 'success', 2000);
+    ensureProposalEditableCard(type);
     refreshProposalPricing();
 };
 
@@ -3925,7 +3997,11 @@ window.selectFromMyCardsToProposal = function (type, cardId, cardName, cardImage
 window.removeProposalCard = function (button) {
     const cardElement = button.closest('.proposal-card');
     if (!cardElement) return;
+    const cardType = getProposalCardType(cardElement);
     cardElement.remove();
+    if (cardType) {
+        ensureProposalEditableCard(cardType);
+    }
     refreshProposalPricing();
 };
 
