@@ -2984,7 +2984,13 @@ function findTradeById(tradeId) {
         const userTradesKey = `userTrades_${currentUser.uid}`;
         const userTrades = JSON.parse(localStorage.getItem(userTradesKey) || '[]');
         const userTrade = userTrades.find(trade => trade.id === tradeId);
-        if (userTrade) return userTrade;
+        if (userTrade) {
+            return {
+                ...userTrade,
+                userId: userTrade.userId || currentUser.uid,
+                userName: userTrade.userName || userTrade.user || localStorage.getItem(`username_${currentUser.uid}`) || currentUser.email?.split('@')[0]
+            };
+        }
     }
 
     // Si no se encuentra, buscar en todos los intercambios disponibles
@@ -2994,7 +3000,14 @@ function findTradeById(tradeId) {
         if (key.startsWith('userTrades_')) {
             const trades = JSON.parse(localStorage.getItem(key) || '[]');
             const trade = trades.find(t => t.id === tradeId);
-            if (trade) return trade;
+            if (trade) {
+                const ownerId = key.replace('userTrades_', '');
+                return {
+                    ...trade,
+                    userId: trade.userId || ownerId,
+                    userName: trade.userName || trade.user || localStorage.getItem(`username_${ownerId}`) || 'Usuario'
+                };
+            }
         }
     }
 
@@ -3926,17 +3939,7 @@ window.handleProposalSubmit = async function (event, originalTradeId) {
     }
 
     // Obtener el intercambio original
-    const allTrades = [];
-    // Buscar en todos los usuarios
-    const userKeys = Object.keys(localStorage).filter(key => key.startsWith('userTrades_'));
-    userKeys.forEach(key => {
-        const trades = JSON.parse(localStorage.getItem(key) || '[]');
-        trades.forEach(trade => {
-            allTrades.push({ ...trade, ownerKey: key });
-        });
-    });
-
-    const originalTradeData = allTrades.find(t => t.id === originalTradeId);
+    const originalTradeData = findTradeById(originalTradeId);
 
     // Recopilar datos de la propuesta
     const proposalData = {
@@ -4006,39 +4009,38 @@ window.handleProposalSubmit = async function (event, originalTradeId) {
         originalTradeData.lastProposalAt = new Date().toISOString();
 
         // Guardar el intercambio actualizado
-        const ownerKey = originalTradeData.ownerKey;
-        const ownerTrades = JSON.parse(localStorage.getItem(ownerKey) || '[]');
+        const ownerId = originalTradeData.userId;
+        const ownerKey = ownerId ? `userTrades_${ownerId}` : '';
+        const ownerTrades = ownerKey ? JSON.parse(localStorage.getItem(ownerKey) || '[]') : [];
         const tradeIndex = ownerTrades.findIndex(t => t.id === originalTradeId);
-        if (tradeIndex !== -1) {
-            // Limpiar ownerKey antes de guardar (no debe filtrarse al trade)
-            const cleanTrade = { ...originalTradeData };
-            delete cleanTrade.ownerKey;
-            ownerTrades[tradeIndex] = cleanTrade;
+        if (ownerKey && tradeIndex !== -1) {
+            ownerTrades[tradeIndex] = { ...originalTradeData };
             localStorage.setItem(ownerKey, JSON.stringify(ownerTrades));
         }
 
         // Crear notificación para el dueño del intercambio
-        const ownerId = ownerKey.replace('userTrades_', '');
         proposalData.ownerUserId = ownerId;
         proposalData.tradeName = originalTradeData.title;
-        const notification = {
-            id: `notif_${Date.now()}`,
-            type: 'proposal',
-            title: '📬 Nueva propuesta recibida',
-            message: `${proposalData.fromUserName} ha enviado una propuesta para tu intercambio "${originalTradeData.title}"`,
-            tradeId: originalTradeId,
-            proposalId: proposalData.id,
-            from: proposalData.fromUserName,
-            timestamp: new Date().toISOString(),
-            read: false
-        };
+        if (ownerId) {
+            const notification = {
+                id: `notif_${Date.now()}`,
+                type: 'proposal',
+                title: '📬 Nueva propuesta recibida',
+                message: `${proposalData.fromUserName} ha enviado una propuesta para tu intercambio "${originalTradeData.title}"`,
+                tradeId: originalTradeId,
+                proposalId: proposalData.id,
+                from: proposalData.fromUserName,
+                timestamp: new Date().toISOString(),
+                read: false
+            };
 
-        // Guardar notificación
-        await saveNotificationForUser(ownerId, notification);
+            // Guardar notificación
+            await saveNotificationForUser(ownerId, notification);
 
-        // Actualizar badge si es el usuario actual
-        if (ownerId === currentUser.uid) {
-            updateNotificationBadge();
+            // Actualizar badge si es el usuario actual
+            if (ownerId === currentUser.uid) {
+                updateNotificationBadge();
+            }
         }
     }
 
