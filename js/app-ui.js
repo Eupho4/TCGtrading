@@ -2638,6 +2638,9 @@ window.showCardOffers = function (cardName, cardSet, cardImageUrl) {
         return;
     }
 
+    // Store offers globally so onclick handlers can access them by index
+    window._currentCardOffers = offers;
+
     // Crear el modal
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
@@ -2645,7 +2648,7 @@ window.showCardOffers = function (cardName, cardSet, cardImageUrl) {
         if (e.target === modal) modal.remove();
     };
 
-    let offersHTML = offers.map(offer => `
+    let offersHTML = offers.map((offer, offerIdx) => `
                 <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4 border border-gray-200 dark:border-gray-600">
                     <div class="flex justify-between items-start mb-3">
                         <div>
@@ -2686,9 +2689,9 @@ window.showCardOffers = function (cardName, cardSet, cardImageUrl) {
                     </div>
                     
                     <div class="mt-3 flex justify-end">
-                        <button class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1 rounded text-sm"
-                                onclick="alert('Función de contacto en desarrollo')">
-                            💬 Contactar
+                        <button class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded text-sm font-semibold flex items-center gap-1"
+                                onclick="showFinalTradeSummaryFromOffer(${offerIdx})">
+                            🔄 Intercambiar
                         </button>
                     </div>
                 </div>
@@ -5718,9 +5721,9 @@ function viewTradeDetails(tradeId) {
                                         class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors">
                                     <span>💬</span> Proponer Intercambio
                                 </button>
-                                <button onclick="contactUser('${trade.userId}')" 
-                                        class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors">
-                                    <span>📧</span> Contactar
+                                <button onclick="showFinalTradeSummaryFromTrade('${tradeId}')" 
+                                        class="bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors">
+                                    <span>🔄</span> Intercambiar
                                 </button>
                             ` : ''}
                             <button onclick="this.closest('.fixed').remove()" 
@@ -5754,11 +5757,144 @@ function viewTradeDetails(tradeId) {
     });
 }
 
-// Función para contactar con un usuario
-function contactUser(userId) {
-    console.log('📧 Contactando con usuario:', userId);
-    showNotification('Función de contacto en desarrollo', 'info');
+// Función para mostrar el resumen final del intercambio
+function showFinalTradeSummary(offeredCards, wantedCards, otherUserName, tradeId) {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+
+    const offered = offeredCards || [];
+    const wanted  = wantedCards  || [];
+
+    const offeredHTML     = generateTradeCardHTML(offered);
+    const offeredGridClass = getTradeCardGridClass(offered.length);
+    const wantedHTML      = generateTradeCardHTML(wanted);
+    const wantedGridClass  = getTradeCardGridClass(wanted.length);
+
+    modal.innerHTML = `
+        <div class="bg-white dark:bg-gray-900 rounded-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
+            <!-- Header con gradiente -->
+            <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h2 class="text-2xl font-bold mb-1">🔄 Resumen Final del Intercambio</h2>
+                        <p class="text-indigo-200 text-sm">Con: <strong>${otherUserName || 'Usuario'}</strong></p>
+                    </div>
+                    <button onclick="this.closest('.fixed').remove()"
+                            class="text-white hover:text-indigo-200 transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Contenido scrolleable -->
+            <div class="overflow-y-auto max-h-[calc(90vh-120px)] bg-gray-50 dark:bg-gray-800">
+                <div class="p-8">
+                    <div class="flex flex-col lg:flex-row items-start justify-center gap-8">
+                        <!-- Cartas ofrecidas -->
+                        <div class="flex-1 w-full">
+                            <div class="bg-white dark:bg-gray-900 rounded-xl p-6 shadow-sm">
+                                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <span class="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 p-2 rounded-lg">📤</span>
+                                    Ellos Ofrecen
+                                </h3>
+                                <div class="${offeredGridClass} gap-4">
+                                    ${offeredHTML || '<p class="text-gray-500 text-center italic py-8">Sin cartas ofrecidas</p>'}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Separador visual -->
+                        <div class="flex items-center justify-center lg:pt-20">
+                            <div class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-4 rounded-full shadow-lg">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <!-- Cartas buscadas -->
+                        <div class="flex-1 w-full">
+                            <div class="bg-white dark:bg-gray-900 rounded-xl p-6 shadow-sm">
+                                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <span class="bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400 p-2 rounded-lg">📥</span>
+                                    Ellos Buscan
+                                </h3>
+                                <div class="${wantedGridClass} gap-4">
+                                    ${wantedHTML || '<p class="text-gray-500 text-center italic py-8">Sin cartas buscadas</p>'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Balance de valor -->
+                <div id="tradeSummaryBalance" class="mx-0 px-8 pb-4 pt-2">
+                    <p class="text-xs text-gray-400 italic text-center">Calculando balance de valor…</p>
+                </div>
+
+                <!-- Botones de acción -->
+                <div class="flex gap-3 justify-center pb-8">
+                    ${tradeId && currentUser ? `
+                        <button onclick="proposeTrade('${tradeId}'); this.closest('.fixed').remove();"
+                                class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors">
+                            <span>💬</span> Proponer Intercambio
+                        </button>
+                    ` : ''}
+                    <button onclick="this.closest('.fixed').remove()"
+                            class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Cargar precios y calcular balance
+    loadTradeCardPrices(modal);
+    const balanceEl = modal.querySelector('#tradeSummaryBalance');
+    renderTradeBalance(balanceEl, offered, wanted);
+
+    // Cerrar con ESC o click fuera
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+    document.addEventListener('keydown', function escHandler(e) {
+        if (!document.body.contains(modal)) {
+            document.removeEventListener('keydown', escHandler);
+            return;
+        }
+        if (e.key === 'Escape') {
+            modal.remove();
+            document.removeEventListener('keydown', escHandler);
+        }
+    });
 }
+
+// Helper: mostrar resumen desde el modal de ofertas de una carta
+window.showFinalTradeSummaryFromOffer = function (idx) {
+    const offer = window._currentCardOffers && window._currentCardOffers[idx];
+    if (!offer) return;
+    showFinalTradeSummary(offer.offeredCards, offer.wantedCards, offer.user, null);
+};
+
+// Helper: mostrar resumen desde el detalle de un intercambio
+window.showFinalTradeSummaryFromTrade = function (tradeId) {
+    const trade = findTradeById(tradeId);
+    if (!trade) {
+        showNotification('No se encontró el intercambio', 'error');
+        return;
+    }
+    showFinalTradeSummary(
+        trade.finalOfferedCards || trade.offeredCards,
+        trade.finalWantedCards  || trade.wantedCards,
+        trade.userName || trade.user,
+        tradeId
+    );
+};
 
 // Función para mostrar modal de crear intercambio
 window.showCreateTradeModal = (existingTrade = null) => {
