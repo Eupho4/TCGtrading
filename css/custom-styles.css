@@ -146,7 +146,20 @@
                 rgba(236, 72, 153, 0.08) 75%, 
                 rgba(249, 115, 22, 0.08) 100%);
             background-size: 400% 400%;
+            background-color: #f0f9ff; /* color de respaldo cuando el gradiente no carga (debe ir después del shorthand) */
             animation: gradientShift 20s ease infinite;
+        }
+
+        /* En modo oscuro el gradiente necesita mayor opacidad para verse sobre el fondo negro */
+        body.dark-mode .floating-background,
+        html.dark-mode .floating-background {
+            background-image: linear-gradient(135deg,
+                rgba(249, 115, 22, 0.25) 0%,
+                rgba(59, 130, 246, 0.25) 25%,
+                rgba(147, 51, 234, 0.25) 50%,
+                rgba(236, 72, 153, 0.25) 75%,
+                rgba(249, 115, 22, 0.25) 100%);
+            background-color: #0f172a; /* respaldo oscuro */
         }
         
         /* Capas para efecto parallax */
@@ -461,7 +474,8 @@
             background: #374151;
         }
 
-        body.dark-mode {
+        body.dark-mode,
+        html.dark-mode body {
             --color-primary-bg: #1a1a1a;
             --color-text: white;
             --color-header-bg: #000000;
@@ -476,6 +490,12 @@
             --color-input-text: white;
             --color-input-placeholder: #a0aec0;
             --color-select-text: white;
+        }
+
+        /* Cuando el modo oscuro se aplica temprano al elemento html (antes de que exista body) */
+        html.dark-mode {
+            background-color: #1a1a1a;
+            color: white;
         }
 
         body {

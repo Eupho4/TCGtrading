@@ -57,6 +57,16 @@
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
         }
         
+        /* Fondo base siempre visible (por si el CSS externo tarda o falla) */
+        body {
+            background-color: #f0f9ff;
+        }
+
+        /* Si el modo oscuro se aplica temprano al elemento html, el body también debe ser oscuro */
+        html.dark-mode body {
+            background-color: #1a1a1a;
+        }
+
         /* Transiciones suaves */
         * {
             transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
@@ -65,8 +75,17 @@
 
     </style>
 
-<script type='module' src='/js/app-ui.js'></script>
+    <!-- Aplicar modo oscuro antes de que cargue el CSS externo para evitar parpadeo negro -->
+    <script>
+        (function() {
+            if (localStorage.getItem('darkMode') === 'true') {
+                document.documentElement.classList.add('dark', 'dark-mode');
+            }
+        })();
+    </script>
+
 <link rel='stylesheet' href='/css/custom-styles.css'>
+<script type='module' src='/js/app-ui.js'></script>
 </head>
 <body class="flex flex-col min-h-screen">
 

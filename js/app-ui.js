@@ -8971,6 +8971,7 @@ function generateFloatingElements() {
         element.className = `floating-element ${size}`;
         element.src = pokemonImages[Math.floor(Math.random() * pokemonImages.length)];
         element.alt = 'Pokemon';
+        element.onerror = () => { element.remove(); };
 
         // Posición aleatoria
         element.style.left = `${Math.random() * 100}%`;
