@@ -11,7 +11,7 @@ import ChatUI from '/js/modules/chat-ui.js?v=33';
 import { ChatDebugger } from '/js/modules/chat-debug.js?v=33';
 
 // Importar módulos de pagos
-import { renderConnectAccountBanner } from '/js/modules/payment-ui.js';
+import { renderConnectAccountBanner, openPaymentModal } from '/js/modules/payment-ui.js';
 
 // Verificar que las importaciones se cargaron correctamente
 console.log('🔍 Verificando importaciones de chat:', {
@@ -2919,10 +2919,11 @@ function displayTrades(trades, containerId) {
         const displayOffered = trade.finalOfferedCards || trade.offeredCards;
         const displayWanted = trade.finalWantedCards || trade.wantedCards;
         const isCompleted = trade.status === 'completed';
+        const isAwaitingCheckout = trade.status === 'awaiting_checkout';
         const hasProposals = trade.hasProposals || trade.proposalCount > 0;
 
         tradesHTML += `
-                    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border ${isCompleted ? 'border-green-300 dark:border-green-600' : hasProposals ? 'border-yellow-300 dark:border-yellow-600' : 'border-gray-200 dark:border-gray-600'} hover:border-orange-300 dark:hover:border-orange-400 transition-colors">
+                    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border ${isCompleted ? 'border-green-300 dark:border-green-600' : isAwaitingCheckout ? 'border-orange-300 dark:border-orange-600' : hasProposals ? 'border-yellow-300 dark:border-yellow-600' : 'border-gray-200 dark:border-gray-600'} hover:border-orange-300 dark:hover:border-orange-400 transition-colors">
                         <div class="flex justify-between items-start mb-3">
                             <div>
                                 <h4 class="font-semibold text-gray-800 dark:text-white">${trade.title}</h4>
@@ -2930,12 +2931,13 @@ function displayTrades(trades, containerId) {
                             </div>
                             <div class="flex items-center gap-2">
                                 ${isCompleted ? '<span class="text-xs px-2 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full font-medium">✅ Completado</span>' : ''}
-                                ${hasProposals && !isCompleted ? `<span class="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded-full font-medium">📬 ${trade.proposalCount || ''} Propuesta(s)</span>` : ''}
+                                ${isAwaitingCheckout ? '<span class="text-xs px-2 py-1 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 rounded-full font-medium">🚚 Pendiente de envío</span>' : ''}
+                                ${hasProposals && !isCompleted && !isAwaitingCheckout ? `<span class="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded-full font-medium">📬 ${trade.proposalCount || ''} Propuesta(s)</span>` : ''}
                                 <span class="text-xs text-gray-500 dark:text-gray-400">${formatDate(trade.createdAt)}</span>
                             </div>
                         </div>
                         
-                        ${isCompleted && trade.finalOfferedCards ? '<div class="text-xs text-green-600 dark:text-green-400 mb-2 font-medium">📋 Cartas acordadas en la propuesta aceptada:</div>' : ''}
+                        ${(isCompleted || isAwaitingCheckout) && trade.finalOfferedCards ? '<div class="text-xs text-green-600 dark:text-green-400 mb-2 font-medium">📋 Cartas acordadas en la propuesta aceptada:</div>' : ''}
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
@@ -4273,7 +4275,7 @@ function renderReceivedProposalCards(proposals, emptyMessage) {
                 'bg-red-100 text-red-800'
         }">
                             ${proposal.status === 'pending' ? 'Pendiente' :
-            proposal.status === 'accepted' ? 'Aceptada' : 'Rechazada'}
+            proposal.status === 'accepted' ? '✅ Aceptada' : 'Rechazada'}
                         </span>
                     </div>
                     
@@ -4308,7 +4310,7 @@ function renderReceivedProposalCards(proposals, emptyMessage) {
                         </div>
                     ` : ''}
                     
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 flex-wrap">
                         <button onclick="viewProposalDetails('${proposal.id}', '${proposal.tradeId}')"
                                 class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm">
                             Ver Detalles
@@ -4321,6 +4323,12 @@ function renderReceivedProposalCards(proposals, emptyMessage) {
                             <button onclick="rejectProposal('${proposal.id}', '${proposal.tradeId}')"
                                     class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded text-sm">
                                 ❌ Cancelar intercambio
+                            </button>
+                        ` : ''}
+                        ${proposal.status === 'accepted' ? `
+                            <button onclick="window.openCheckoutForProposal('${proposal.id}', '${proposal.tradeId}', true)"
+                                    class="px-4 py-2 ${proposal.ownerCheckout ? 'bg-teal-500 hover:bg-teal-600' : 'bg-orange-500 hover:bg-orange-600'} text-white rounded text-sm font-semibold">
+                                ${proposal.ownerCheckout ? '✏️ Editar envío y pago' : '🚚 Completar envío y pago'}
                             </button>
                         ` : ''}
                         <button onclick="deleteReceivedProposal('${proposal.id}', '${proposal.tradeId}')"
@@ -4359,7 +4367,7 @@ function renderSentProposalCards(proposals) {
                 'bg-red-100 text-red-800'
         }">
                             ${proposal.status === 'pending' ? 'Pendiente' :
-            proposal.status === 'accepted' ? 'Aceptada' : 'Rechazada'}
+            proposal.status === 'accepted' ? '✅ Aceptada' : 'Rechazada'}
                         </span>
                     </div>
                     
@@ -4388,11 +4396,17 @@ function renderSentProposalCards(proposals) {
                         </div>
                     </div>
                     
-                    <div class="flex gap-2">
+                    <div class="flex gap-2 flex-wrap">
                         ${proposal.status === 'pending' ? `
                             <button onclick="cancelProposal('${proposal.id}', '${proposal.tradeId}')"
                                     class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded text-sm">
                                 Cancelar Propuesta
+                            </button>
+                        ` : ''}
+                        ${proposal.status === 'accepted' ? `
+                            <button onclick="window.openCheckoutForProposal('${proposal.id}', '${proposal.tradeId}', false)"
+                                    class="px-4 py-2 ${proposal.proposerCheckout ? 'bg-teal-500 hover:bg-teal-600' : 'bg-orange-500 hover:bg-orange-600'} text-white rounded text-sm font-semibold">
+                                ${proposal.proposerCheckout ? '✏️ Editar envío y pago' : '🚚 Completar envío y pago'}
                             </button>
                         ` : ''}
                         <button onclick="deleteSentProposal('${proposal.id}', '${proposal.tradeId}')"
@@ -4716,13 +4730,13 @@ window.acceptProposal = async function (proposalId, tradeId) {
         saveLocalTradeProposals(tradeId, updatedLocalProposals);
         await persistProposalForUsers(proposal);
 
-        // Crear notificación para el usuario que envió la propuesta
+        // Crear notificación para el usuario que envió la propuesta (indicando que debe completar el checkout)
         const ownerName = localStorage.getItem(`username_${currentUser.uid}`) || currentUser.email.split('@')[0];
         const notification = {
             id: `notif_${Date.now()}`,
-            type: 'proposal_accepted',
-            title: '✅ Intercambio aceptado',
-            message: `${ownerName} ha aceptado el intercambio "${proposal.tradeName || 'sin título'}". ¡Es hora de valorar el intercambio!`,
+            type: 'proposal_accepted_checkout',
+            title: '🚚 ¡Propuesta aceptada! Completa el envío',
+            message: `${ownerName} ha aceptado tu propuesta para "${proposal.tradeName || 'sin título'}". Por favor, completa los datos de envío y pago para finalizar el intercambio.`,
             tradeId: tradeId,
             proposalId: proposalId,
             from: ownerName,
@@ -4733,14 +4747,14 @@ window.acceptProposal = async function (proposalId, tradeId) {
         // Guardar notificación para el proponente
         await saveNotificationForUser(proposal.fromUserId, notification);
 
-        // Marcar el intercambio como completado Y actualizar cartas con las de la propuesta
+        // Marcar el intercambio como "awaiting_checkout" (pendiente de completar datos de envío y pago)
         const userKeys = Object.keys(localStorage).filter(key => key.startsWith('userTrades_'));
         userKeys.forEach(key => {
             const trades = JSON.parse(localStorage.getItem(key) || '[]');
             const tradeIndex = trades.findIndex(t => t.id === tradeId);
             if (tradeIndex !== -1) {
-                trades[tradeIndex].status = 'completed';
-                trades[tradeIndex].completedAt = new Date().toISOString();
+                trades[tradeIndex].status = 'awaiting_checkout';
+                trades[tradeIndex].acceptedAt = new Date().toISOString();
                 trades[tradeIndex].completedWith = proposal.fromUserId;
                 // Actualizar las cartas del intercambio con las de la propuesta aceptada
                 trades[tradeIndex].finalOfferedCards = proposal.offeredCards;
@@ -4752,17 +4766,388 @@ window.acceptProposal = async function (proposalId, tradeId) {
             }
         });
 
-        // Mostrar modal de valoración para ambos usuarios
-        setTimeout(() => {
-            showRatingModal(proposal.fromUserId, proposal.fromUserName, tradeId);
-        }, 500);
+        showNotification('✅ Propuesta aceptada. Completa los datos de envío para finalizar el intercambio.', 'success', 4000);
 
-        showNotification('✅ Propuesta aceptada. ¡Ahora puedes valorar el intercambio!', 'success', 4000);
+        // Mostrar modal de checkout para el dueño del intercambio
+        setTimeout(() => {
+            showCheckoutModal(proposal, tradeId, true);
+        }, 400);
 
         // Recargar la lista de propuestas
         loadReceivedProposals();
         loadSentProposals();
     }
+};
+
+// ── Checkout flow ─────────────────────────────────────────────────────────────
+
+/**
+ * Abre el modal de checkout (datos de envío + método de pago) para que ambas
+ * partes del intercambio puedan completar la información necesaria.
+ *
+ * @param {object} proposal – Objeto propuesta aceptada
+ * @param {string} tradeId  – ID del intercambio
+ * @param {boolean} isOwner – true si el usuario actual es el dueño del intercambio
+ */
+function showCheckoutModal(proposal, tradeId, isOwner) {
+    document.getElementById('checkoutModal')?.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'checkoutModal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+
+    // Verificar si el usuario ya completó su checkout
+    const myCheckout = isOwner ? proposal.ownerCheckout : proposal.proposerCheckout;
+    const otherCheckout = isOwner ? proposal.proposerCheckout : proposal.ownerCheckout;
+    const alreadyDone = !!myCheckout;
+
+    modal.innerHTML = `
+        <div class="bg-white dark:bg-gray-900 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-green-600 to-teal-600 p-6 text-white">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h2 class="text-2xl font-bold mb-1">🎉 ¡Intercambio Aceptado!</h2>
+                        <p class="text-green-100 text-sm">Completa los datos de envío y pago para finalizar el intercambio</p>
+                    </div>
+                    <button onclick="document.getElementById('checkoutModal').remove()"
+                            class="text-white hover:text-green-200 transition-colors" aria-label="Cerrar">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Estado del otro participante -->
+            <div class="px-6 pt-4">
+                <div class="flex items-center gap-3 p-3 rounded-lg ${otherCheckout ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700' : 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700'}">
+                    <span class="text-xl">${otherCheckout ? '✅' : '⏳'}</span>
+                    <p class="text-sm ${otherCheckout ? 'text-green-700 dark:text-green-300' : 'text-yellow-700 dark:text-yellow-300'}">
+                        ${otherCheckout
+                            ? `<strong>${isOwner ? proposal.fromUserName : 'El dueño del intercambio'}</strong> ya completó sus datos de envío.`
+                            : `<strong>${isOwner ? proposal.fromUserName : 'El dueño del intercambio'}</strong> aún no ha completado sus datos de envío.`
+                        }
+                    </p>
+                </div>
+            </div>
+
+            <!-- Formulario scrolleable -->
+            <div class="overflow-y-auto max-h-[calc(90vh-180px)]">
+                <div class="p-6 space-y-6">
+
+                    ${alreadyDone ? `
+                    <!-- Aviso de que ya completó el checkout -->
+                    <div class="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl">
+                        <p class="text-blue-700 dark:text-blue-300 font-medium">
+                            ✅ Ya has completado tus datos de envío. Puedes actualizarlos a continuación si lo necesitas.
+                        </p>
+                    </div>
+                    ` : ''}
+
+                    <!-- Datos de Envío -->
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                            <span class="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 p-2 rounded-lg">📦</span>
+                            Datos de Envío
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Nombre completo *
+                                </label>
+                                <input type="text" id="checkoutFullName"
+                                       value="${myCheckout?.shippingAddress?.fullName || ''}"
+                                       class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400"
+                                       placeholder="Juan García López">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Teléfono *
+                                </label>
+                                <input type="tel" id="checkoutPhone"
+                                       value="${myCheckout?.shippingAddress?.phone || ''}"
+                                       class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400"
+                                       placeholder="+34 600 000 000">
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Dirección *
+                                </label>
+                                <input type="text" id="checkoutAddress"
+                                       value="${myCheckout?.shippingAddress?.address || ''}"
+                                       class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400"
+                                       placeholder="Calle Mayor, 1, 2ºA">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Ciudad *
+                                </label>
+                                <input type="text" id="checkoutCity"
+                                       value="${myCheckout?.shippingAddress?.city || ''}"
+                                       class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400"
+                                       placeholder="Madrid">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Código Postal *
+                                </label>
+                                <input type="text" id="checkoutPostalCode"
+                                       value="${myCheckout?.shippingAddress?.postalCode || ''}"
+                                       class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400"
+                                       placeholder="28001">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    País
+                                </label>
+                                <select id="checkoutCountry"
+                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-400">
+                                    <option value="España" ${(myCheckout?.shippingAddress?.country || 'España') === 'España' ? 'selected' : ''}>🇪🇸 España</option>
+                                    <option value="México" ${myCheckout?.shippingAddress?.country === 'México' ? 'selected' : ''}>🇲🇽 México</option>
+                                    <option value="Argentina" ${myCheckout?.shippingAddress?.country === 'Argentina' ? 'selected' : ''}>🇦🇷 Argentina</option>
+                                    <option value="Colombia" ${myCheckout?.shippingAddress?.country === 'Colombia' ? 'selected' : ''}>🇨🇴 Colombia</option>
+                                    <option value="Chile" ${myCheckout?.shippingAddress?.country === 'Chile' ? 'selected' : ''}>🇨🇱 Chile</option>
+                                    <option value="Perú" ${myCheckout?.shippingAddress?.country === 'Perú' ? 'selected' : ''}>🇵🇪 Perú</option>
+                                    <option value="Otro" ${myCheckout?.shippingAddress?.country === 'Otro' ? 'selected' : ''}>🌍 Otro</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Método de Envío -->
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                            <span class="bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-300 p-2 rounded-lg">🚚</span>
+                            Método de Envío
+                        </h3>
+                        <div class="space-y-3">
+                            ${[
+                                { value: 'correos', label: 'Correos', icon: '📮' },
+                                { value: 'seur', label: 'SEUR', icon: '🟡' },
+                                { value: 'mrw', label: 'MRW', icon: '🔴' },
+                                { value: 'nacex', label: 'Nacex', icon: '🔵' }
+                            ].map(m => `
+                                <label class="flex items-center gap-3 p-3 border border-gray-200 dark:border-gray-600 rounded-lg opacity-50 cursor-not-allowed select-none">
+                                    <input type="radio" name="shippingMethod" value="${m.value}" disabled class="w-4 h-4">
+                                    <div class="flex-1 flex items-center gap-2">
+                                        <span>${m.icon}</span>
+                                        <span class="font-medium text-gray-900 dark:text-white">${m.label}</span>
+                                        <span class="ml-auto px-2 py-0.5 text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 rounded-full">Próximamente</span>
+                                    </div>
+                                </label>
+                            `).join('')}
+                            <label class="flex items-center gap-3 p-3 border-2 ${(!myCheckout?.shippingMethod || myCheckout?.shippingMethod === 'en_mano') ? 'border-green-400 dark:border-green-600' : 'border-gray-200 dark:border-gray-600'} rounded-lg cursor-pointer hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">
+                                <input type="radio" name="shippingMethod" value="en_mano"
+                                       ${(!myCheckout?.shippingMethod || myCheckout?.shippingMethod === 'en_mano') ? 'checked' : ''}
+                                       class="w-4 h-4 text-green-600">
+                                <div class="flex-1">
+                                    <span class="font-medium text-gray-900 dark:text-white">🤝 Entrega en mano</span>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Coordina directamente con el otro usuario</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Protección del Intercambio (Stripe) -->
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                            <span class="bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 p-2 rounded-lg">💳</span>
+                            Método de Pago
+                        </h3>
+                        <div class="space-y-3">
+                            <label class="flex items-start gap-3 p-4 border-2 ${myCheckout?.paymentProtection ? 'border-purple-400 dark:border-purple-600' : 'border-gray-200 dark:border-gray-600'} rounded-xl cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors">
+                                <input type="radio" name="paymentProtection" value="protected" id="payProtected"
+                                       ${myCheckout?.paymentProtection ? 'checked' : ''}
+                                       onchange="window.toggleCheckoutPaymentForm(true)"
+                                       class="w-4 h-4 text-purple-600 mt-0.5">
+                                <div>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="font-semibold text-gray-900 dark:text-white">🛡️ Con Protección Stripe</span>
+                                        <span class="px-2 py-0.5 text-xs bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded-full font-medium">€3,99</span>
+                                    </div>
+                                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                        Tus fondos quedan en depósito hasta confirmar la recepción. Recomendado para intercambios online.
+                                    </p>
+                                </div>
+                            </label>
+                            <label class="flex items-start gap-3 p-4 border-2 ${!myCheckout?.paymentProtection ? 'border-green-400 dark:border-green-600' : 'border-gray-200 dark:border-gray-600'} rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                                <input type="radio" name="paymentProtection" value="unprotected" id="payUnprotected"
+                                       ${!myCheckout?.paymentProtection ? 'checked' : ''}
+                                       onchange="window.toggleCheckoutPaymentForm(false)"
+                                       class="w-4 h-4 text-gray-600 mt-0.5">
+                                <div>
+                                    <span class="font-semibold text-gray-900 dark:text-white">Sin Protección</span>
+                                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                        Gratuito. El intercambio se coordina directamente entre los usuarios sin garantía.
+                                    </p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- Contenedor del formulario de pago Stripe (se muestra al elegir protección) -->
+                        <div id="checkoutStripeContainer" class="${myCheckout?.paymentProtection ? '' : 'hidden'} mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                                💳 Se abrirá el formulario de pago seguro al confirmar
+                            </p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                                Al hacer clic en "Confirmar", serás redirigido al formulario de pago de Stripe para completar la protección de €3,99.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Botones -->
+                    <div class="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <button type="button"
+                                onclick="window.submitCheckoutForm('${proposal.id}', '${tradeId}', ${isOwner})"
+                                id="checkoutSubmitBtn"
+                                class="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-colors">
+                            ✅ Confirmar Datos de Envío
+                        </button>
+                        <button type="button"
+                                onclick="document.getElementById('checkoutModal').remove()"
+                                class="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-xl font-semibold transition-colors">
+                            Más tarde
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+// Alterna la visibilidad del bloque informativo de Stripe en el checkout
+window.toggleCheckoutPaymentForm = function (show) {
+    const container = document.getElementById('checkoutStripeContainer');
+    if (!container) return;
+    container.classList.toggle('hidden', !show);
+};
+
+// Abre el modal de checkout para una propuesta aceptada
+window.openCheckoutForProposal = async function (proposalId, tradeId, isOwner) {
+    if (!currentUser) return;
+    const proposal = await findProposalForCurrentUser(proposalId, tradeId);
+    if (!proposal) {
+        showNotification('No se encontró la propuesta.', 'error');
+        return;
+    }
+    showCheckoutModal(proposal, tradeId, isOwner);
+};
+
+// Envía los datos del checkout (envío + pago) para una propuesta aceptada
+window.submitCheckoutForm = async function (proposalId, tradeId, isOwner) {
+    if (!currentUser) return;
+
+    // Recoger valores del formulario
+    const fullName   = document.getElementById('checkoutFullName')?.value?.trim();
+    const phone      = document.getElementById('checkoutPhone')?.value?.trim();
+    const address    = document.getElementById('checkoutAddress')?.value?.trim();
+    const city       = document.getElementById('checkoutCity')?.value?.trim();
+    const postalCode = document.getElementById('checkoutPostalCode')?.value?.trim();
+    const country    = document.getElementById('checkoutCountry')?.value || 'España';
+    const shippingMethod   = document.querySelector('input[name="shippingMethod"]:checked')?.value || 'en_mano';
+    const paymentProtection = document.querySelector('input[name="paymentProtection"]:checked')?.value === 'protected';
+
+    // Validar campos obligatorios
+    if (!fullName || !phone || !address || !city || !postalCode) {
+        showNotification('Por favor, rellena todos los campos obligatorios de envío.', 'error');
+        return;
+    }
+
+    const checkoutData = {
+        shippingAddress: { fullName, phone, address, city, postalCode, country },
+        shippingMethod,
+        paymentProtection,
+        completedAt: new Date().toISOString()
+    };
+
+    // Buscar y actualizar la propuesta
+    const proposal = await findProposalForCurrentUser(proposalId, tradeId);
+    if (!proposal) {
+        showNotification('No se encontró la propuesta.', 'error');
+        return;
+    }
+
+    if (isOwner) {
+        proposal.ownerCheckout = checkoutData;
+    } else {
+        proposal.proposerCheckout = checkoutData;
+    }
+
+    // Persistir propuesta actualizada
+    const localProposals = getLocalTradeProposals(tradeId);
+    const updatedProposals = localProposals.map(p => p.id === proposalId ? { ...proposal } : p);
+    saveLocalTradeProposals(tradeId, updatedProposals);
+    await persistProposalForUsers(proposal);
+
+    // Notificar al otro participante
+    const otherUserId    = isOwner ? proposal.fromUserId : proposal.ownerUserId;
+    const currentUserName = localStorage.getItem(`username_${currentUser.uid}`) || currentUser.email.split('@')[0];
+
+    if (otherUserId) {
+        const alreadyDoneByOther = isOwner ? !!proposal.proposerCheckout : !!proposal.ownerCheckout;
+        if (!alreadyDoneByOther) {
+            const notif = {
+                id: `notif_${Date.now()}`,
+                type: 'checkout_completed_by_other',
+                title: '🚚 Tu compañero completó los datos de envío',
+                message: `${currentUserName} ha completado sus datos de envío. Por favor, completa los tuyos para finalizar el intercambio.`,
+                tradeId,
+                proposalId,
+                from: currentUserName,
+                timestamp: new Date().toISOString(),
+                read: false
+            };
+            await saveNotificationForUser(otherUserId, notif);
+        }
+    }
+
+    // Comprobar si el otro participante ya había completado su checkout antes de este envío
+    // (si es así, ahora ambos habrán completado el checkout)
+    const otherPartyCompleted = !!(isOwner ? proposal.proposerCheckout : proposal.ownerCheckout);
+
+    // Cerrar modal de checkout
+    document.getElementById('checkoutModal')?.remove();
+
+    if (paymentProtection) {
+        // Abrir modal de pago de Stripe tras guardar los datos
+        showNotification('✅ Datos de envío guardados. Procediendo al pago de protección...', 'success', 3000);
+        setTimeout(async () => {
+            const sellerUid = isOwner
+                ? proposal.fromUserId                        // Proposer when owner is paying
+                : (proposal.ownerUserId || currentUser.uid); // Owner when proposer is paying
+            await openPaymentModal({
+                tradeId,
+                paymentType: 'trade_protection',
+                grossAmountEur: 0,
+                buyer: { uid: currentUser.uid, email: currentUser.email },
+                sellerFirebaseUid: sellerUid,
+                onSuccess: () => {
+                    showNotification('✅ Pago de protección completado. ¡El intercambio está en marcha!', 'success', 5000);
+                    loadReceivedProposals();
+                    loadSentProposals();
+                }
+            });
+        }, 600);
+    } else {
+        showNotification('✅ Datos de envío guardados correctamente.', 'success', 4000);
+    }
+
+    if (otherPartyCompleted) {
+        showNotification('🎉 ¡Ambos usuarios han completado los datos! El intercambio está listo para proceder.', 'info', 6000);
+        // Una vez que los dos completaron el checkout, mostrar valoraciones
+        setTimeout(() => {
+            const otherName = isOwner ? proposal.fromUserName : 'el dueño del intercambio';
+            const otherId   = isOwner ? proposal.fromUserId : proposal.ownerUserId;
+            if (otherId) showRatingModal(otherId, otherName, tradeId);
+        }, 1000);
+    }
+
+    loadReceivedProposals();
+    loadSentProposals();
 };
 
 // Función para ver detalles de propuesta
@@ -4923,6 +5308,17 @@ window.viewProposalDetails = async function (proposalId, tradeId) {
                                     <button onclick="rejectProposal('${proposalId}', '${tradeId}'); this.closest('.fixed').remove();"
                                             class="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold">
                                         ❌ Cancelar intercambio
+                                    </button>
+                                    <button onclick="this.closest('.fixed').remove()"
+                                            class="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold">
+                                        Cerrar
+                                    </button>
+                                </div>
+                            ` : proposal.status === 'accepted' ? `
+                                <div class="flex flex-wrap gap-3 justify-center mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                                    <button onclick="this.closest('.fixed').remove(); window.openCheckoutForProposal('${proposalId}', '${tradeId}', ${originalTrade && originalTrade.userId === currentUser.uid});"
+                                            class="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold">
+                                        🚚 Completar envío y pago
                                     </button>
                                     <button onclick="this.closest('.fixed').remove()"
                                             class="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold">
@@ -5578,6 +5974,7 @@ function viewTradeDetails(tradeId) {
 
     // Usar cartas finales si el intercambio fue completado
     const isCompleted = trade.status === 'completed';
+    const isAwaitingCheckout = trade.status === 'awaiting_checkout';
     const displayOffered = trade.finalOfferedCards || trade.offeredCards;
     const displayWanted = trade.finalWantedCards || trade.wantedCards;
 
@@ -5736,8 +6133,14 @@ function viewTradeDetails(tradeId) {
                         })()}
                         
                         <!-- Action Buttons -->
-                        <div class="flex gap-3 justify-center">
-                            ${currentUser && trade.userId !== currentUser.uid ? `
+                        <div class="flex flex-wrap gap-3 justify-center">
+                            ${isAwaitingCheckout && currentUser && trade.acceptedProposalId ? `
+                                <button onclick="this.closest('.fixed').remove(); window.openCheckoutForProposal('${trade.acceptedProposalId}', '${tradeId}', ${currentUser && trade.userId === currentUser.uid})"
+                                        class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors">
+                                    <span>🚚</span> Completar envío y pago
+                                </button>
+                            ` : ''}
+                            ${currentUser && trade.userId !== currentUser.uid && !isAwaitingCheckout && !isCompleted ? `
                                 <button onclick="proposeTrade('${tradeId}')" 
                                         class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors">
                                     <span>💬</span> Proponer Intercambio

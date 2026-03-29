@@ -52,6 +52,7 @@ export const VIEW_MODES = {
 export const TRADE_STATUS = {
     ACTIVE: 'active',
     PENDING: 'pending',
+    AWAITING_CHECKOUT: 'awaiting_checkout', // Proposal accepted – both parties must fill shipping & payment
     IN_ESCROW: 'in_escrow',     // Funds held - awaiting shipment
     IN_TRANSIT: 'in_transit',   // Tracking number provided
     COMPLETED: 'completed',     // Buyer confirmed receipt / auto-released
