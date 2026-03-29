@@ -83,6 +83,9 @@ let notificationsListenerUnsubscribe = null;
 let receivedProposalsListenerUnsubscribe = null;
 let knownUnreadNotificationIds = new Set();
 
+// Usuario destino para intercambio iniciado desde la búsqueda de cartas
+let pendingTradeTargetUser = null;
+
 function getLocalNotifications(userId) {
     return JSON.parse(localStorage.getItem(`notifications_${userId}`) || '[]');
 }
@@ -5904,7 +5907,10 @@ function setupCreateTradeModalEvents(modal, isEditing = false, existingTrade = n
     const addWantedBtn = modal.querySelector('#addWantedCardBtn');
 
     // Cerrar modal
-    const closeModal = () => modal.remove();
+    const closeModal = () => {
+        pendingTradeTargetUser = null;
+        modal.remove();
+    };
     closeBtn.addEventListener('click', closeModal);
     cancelBtn.addEventListener('click', closeModal);
 
@@ -6578,6 +6584,25 @@ async function handleCreateTradeSubmit(e) {
 
             // Aquí se implementará el guardado en Firestore
             // await saveTradeToFirestore(tradeData);
+
+            // Notificar al usuario destino si el intercambio se inició desde la búsqueda de una carta
+            if (pendingTradeTargetUser) {
+                const targetUser = pendingTradeTargetUser;
+                pendingTradeTargetUser = null;
+                const fromUserName = localStorage.getItem(`username_${currentUser.uid}`) || tradeData.user || 'Alguien';
+                const notification = {
+                    id: `notif_${Date.now()}`,
+                    type: 'trade_interest',
+                    title: '🤝 Nuevo intercambio propuesto',
+                    message: `${fromUserName} ha creado un intercambio interesado en tu carta`,
+                    tradeId: tradeData.id,
+                    from: fromUserName,
+                    fromUserId: currentUser.uid,
+                    timestamp: new Date().toISOString(),
+                    read: false
+                };
+                await saveNotificationForUser(targetUser.userId, notification);
+            }
 
             showSuccessMessage('¡Intercambio creado exitosamente! 🎉');
         }
@@ -12054,7 +12079,7 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
                         <div class="flex items-center gap-1 flex-wrap text-sm">${priceHTML}</div>
                         ${user.condition ? `<div class="text-xs text-gray-500 dark:text-gray-400">${user.condition}${user.language ? ' · ' + user.language : ''}</div>` : ''}
                     </div>
-                    <button onclick="proposeTradeForCard('${escStr(cardId)}', '${escStr(cardName)}', '${escStr(cardImageUrl)}', '${escStr(cardSet)}', '', ${user.customPrice != null ? Number(user.customPrice) : 'null'}, '${escStr(user.condition || DIRECT_PROPOSAL_DEFAULT_CONDITION)}', '${escStr(user.language || DIRECT_PROPOSAL_DEFAULT_LANGUAGE)}')"
+                    <button onclick="proposeTradeForCard('${escStr(cardId)}', '${escStr(cardName)}', '${escStr(cardImageUrl)}', '${escStr(cardSet)}', '', ${user.customPrice != null ? Number(user.customPrice) : 'null'}, '${escStr(user.condition || DIRECT_PROPOSAL_DEFAULT_CONDITION)}', '${escStr(user.language || DIRECT_PROPOSAL_DEFAULT_LANGUAGE)}', '${escStr(user.userId)}', '${escStr(user.userName)}')"
                             class="shrink-0 bg-green-500 hover:bg-green-600 active:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition-colors w-full sm:w-auto text-center">
                         🤝 Proponer intercambio
                     </button>
@@ -12148,12 +12173,17 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
 };
 
 // Abre el modal de creación de intercambio con la carta buscada ya pre-cargada en la sección "Cartas que Busco"
-window.proposeTradeForCard = function(cardId, cardName, cardImageUrl, cardSetName, cardNumber, customPrice = null, condition = DIRECT_PROPOSAL_DEFAULT_CONDITION, language = DIRECT_PROPOSAL_DEFAULT_LANGUAGE) {
+window.proposeTradeForCard = function(cardId, cardName, cardImageUrl, cardSetName, cardNumber, customPrice = null, condition = DIRECT_PROPOSAL_DEFAULT_CONDITION, language = DIRECT_PROPOSAL_DEFAULT_LANGUAGE, targetUserId = null, targetUserName = null) {
     if (!currentUser) {
         showNotification('Debes iniciar sesión para proponer un intercambio', 'warning', 4000);
         showAuthModal('login');
         return;
     }
+
+    // Guardar el usuario destino para poder notificarle al crear el intercambio
+    pendingTradeTargetUser = (targetUserId && targetUserId !== currentUser.uid)
+        ? { userId: targetUserId, userName: targetUserName || 'Usuario' }
+        : null;
 
     // Abrir modal de creación de intercambio
     showCreateTradeModal();
