@@ -863,6 +863,7 @@ function hideHomeSections() {
 }
 
 function showInitialSections() {
+    sessionStorage.setItem('currentSection', 'home');
     // Mostrar secciones iniciales
     if (heroSection) heroSection.classList.remove('hidden');
 
@@ -906,6 +907,7 @@ function showSearchResults() {
 }
 
 function showInboxSection() {
+    sessionStorage.setItem('currentSection', 'inbox');
     // Ocultar otras secciones
     hideHomeSections();
     if (searchResultsSection) searchResultsSection.classList.add('hidden');
@@ -925,6 +927,7 @@ function showInboxSection() {
 }
 
 function showMyCardsSection() {
+    sessionStorage.setItem('currentSection', 'myCards');
     // Ocultar otras secciones
     hideHomeSections();
     if (searchResultsSection) searchResultsSection.classList.add('hidden');
@@ -952,6 +955,7 @@ function showMyCardsSection() {
 }
 
 function showInterchangesSection() {
+    sessionStorage.setItem('currentSection', 'interchanges');
     // Ocultar otras secciones
     hideHomeSections();
     if (searchResultsSection) searchResultsSection.classList.add('hidden');
@@ -986,6 +990,7 @@ function showInterchangesSection() {
 }
 
 function showHelpSection(tabToShow = null) {
+    sessionStorage.setItem('currentSection', 'help');
     // Ocultar otras secciones
     hideHomeSections();
     if (searchResultsSection) searchResultsSection.classList.add('hidden');
@@ -1014,6 +1019,7 @@ function showHelpSection(tabToShow = null) {
 
 
 function showProfileSection() {
+    sessionStorage.setItem('currentSection', 'profile');
     console.log('🔍 showProfileSection llamada');
 
     // IMPORTANTE: NO MOSTRAR MODAL DE LOGIN AQUÍ
@@ -10585,8 +10591,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Inicializar la Pokéball animada (removida)
 
-    // Mostrar secciones iniciales
-    showInitialSections();
+    // Mostrar secciones iniciales o restaurar la sección guardada
+    const savedSection = sessionStorage.getItem('currentSection');
+    switch (savedSection) {
+        case 'myCards': showMyCardsSection(); break;
+        case 'interchanges': showInterchangesSection(); break;
+        case 'profile': showProfileSection(); break;
+        case 'inbox': showInboxSection(); break;
+        case 'help': showHelpSection(); break;
+        default: showInitialSections(); break;
+    }
 
     // Cargar sets para filtros de búsqueda
     fetchSetsAndPopulateSearchFilters();
@@ -10666,6 +10680,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Event listeners para enlaces de navegación
+    const homeLinkNav = document.getElementById('homeLink');
     const loginLinkNav = document.getElementById('loginLink');
     const registerLinkNav = document.getElementById('registerLink');
     const logoutLinkNav = document.getElementById('logoutLink');
@@ -10675,6 +10690,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatLinkNav = document.getElementById('chatLink');
 
     console.log('🔍 Enlaces encontrados:', {
+        homeLink: !!homeLinkNav,
         loginLink: !!loginLinkNav,
         registerLink: !!registerLinkNav,
         logoutLink: !!logoutLinkNav,
@@ -10683,6 +10699,16 @@ document.addEventListener('DOMContentLoaded', () => {
         inboxLink: !!inboxLinkNav,
         chatLink: !!chatLinkNav
     });
+
+    // Event listener para el logo (ir a inicio)
+    if (homeLinkNav) {
+        homeLinkNav.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log('🏠 Home link clicked');
+            showInitialSections();
+            window.scrollTo(0, 0);
+        });
+    }
 
     // Event listener para login
     if (loginLinkNav) {
