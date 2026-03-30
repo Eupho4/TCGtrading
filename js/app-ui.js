@@ -1089,6 +1089,7 @@ function switchProfileTab(tabName) {
         case 'trades':
             targetContent = document.getElementById('profileTradesContent');
             targetTab = document.getElementById('profileTradesTab');
+            loadProfileTradesHistory();
             break;
         case 'settings':
             targetContent = document.getElementById('profileSettingsContent');
@@ -1223,6 +1224,7 @@ function switchTradeTab(tabName) {
         case 'completed':
             targetContent = document.getElementById('tradesCompletedContent');
             targetTab = document.getElementById('tradesCompletedTab');
+            loadCompletedTrades();
             break;
         case 'received':
             targetContent = document.getElementById('tradesReceivedContent');
@@ -4355,7 +4357,18 @@ function renderReceivedProposalCards(proposals, emptyMessage) {
                             <span class="px-3 py-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded text-sm">
                                 ⏳ Esperando confirmación del otro usuario
                             </span>
-                            ` : ''}
+                            ` : `
+                            ${hasAlreadyRatedTrade(proposal.tradeId) ? `
+                            <span class="px-4 py-2 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded text-sm font-semibold">
+                                ✅ Ya has valorado este intercambio
+                            </span>
+                            ` : `
+                            <button onclick="window.showRatingModal('${escapeForOnclickArg(proposal.fromUserId)}', '${escapeForOnclickArg(proposal.fromUserName || 'el proponente')}', '${escapeForOnclickArg(proposal.tradeId)}')"
+                                    class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded text-sm font-semibold">
+                                ⭐ Dejar Valoración
+                            </button>
+                            `}
+                            `}
                         ` : ''}
                         <button onclick="deleteReceivedProposal('${proposal.id}', '${proposal.tradeId}')"
                                 class="px-2 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded text-sm"
@@ -4449,7 +4462,18 @@ function renderSentProposalCards(proposals) {
                             <span class="px-3 py-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded text-sm">
                                 ⏳ Esperando confirmación del otro usuario
                             </span>
-                            ` : ''}
+                            ` : `
+                            ${hasAlreadyRatedTrade(proposal.tradeId) ? `
+                            <span class="px-4 py-2 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded text-sm font-semibold">
+                                ✅ Ya has valorado este intercambio
+                            </span>
+                            ` : `
+                            <button onclick="window.showRatingModal('${escapeForOnclickArg(proposal.ownerUserId)}', '${escapeForOnclickArg(localStorage.getItem('username_' + proposal.ownerUserId) || 'el dueño del intercambio')}', '${escapeForOnclickArg(proposal.tradeId)}')"
+                                    class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded text-sm font-semibold">
+                                ⭐ Dejar Valoración
+                            </button>
+                            `}
+                            `}
                         ` : ''}
                         <button onclick="deleteSentProposal('${proposal.id}', '${proposal.tradeId}')"
                                 class="px-2 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded text-sm"
@@ -4543,6 +4567,107 @@ async function loadNotifications() {
                     </div>
                 </div>
             `).join('');
+}
+
+// Función para renderizar la lista de intercambios completados (usada en el tab y en el perfil)
+async function renderCompletedTradesList(container) {
+    if (!container || !currentUser) return;
+
+    container.innerHTML = `<div class="text-center text-gray-500 dark:text-gray-400 py-8">
+        <span class="text-2xl">⏳</span><p class="mt-2">Cargando intercambios completados...</p>
+    </div>`;
+
+    const [receivedProposals, sentProposals] = await Promise.all([
+        getReceivedProposalsForUser(currentUser.uid),
+        getSentProposalsForUser(currentUser.uid)
+    ]);
+
+    const completedReceived = receivedProposals
+        .filter(p => p.ownerReceived && p.proposerReceived)
+        .map(p => ({ ...p, role: 'owner' }));
+
+    const completedSent = sentProposals
+        .filter(p => p.ownerReceived && p.proposerReceived)
+        .map(p => ({ ...p, role: 'proposer' }));
+
+    // Unir y deduplicar por id de propuesta
+    const seen = new Set();
+    const allCompleted = [...completedReceived, ...completedSent].filter(p => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+    });
+
+    // Ordenar del más reciente al más antiguo
+    allCompleted.sort((a, b) => {
+        const dateA = new Date(a.proposerReceived?.confirmedAt || a.ownerReceived?.confirmedAt || a.createdAt);
+        const dateB = new Date(b.proposerReceived?.confirmedAt || b.ownerReceived?.confirmedAt || b.createdAt);
+        return dateB - dateA;
+    });
+
+    if (allCompleted.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-gray-500 dark:text-gray-400 py-8">
+                <span class="text-4xl">✅</span>
+                <p class="mt-2">No tienes intercambios completados aún</p>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = allCompleted.map(proposal => {
+        const isOwner = proposal.role === 'owner';
+        const otherUserId = isOwner ? proposal.fromUserId : proposal.ownerUserId;
+        const otherUserName = isOwner
+            ? (proposal.fromUserName || 'el proponente')
+            : (localStorage.getItem(`username_${proposal.ownerUserId}`) || 'el dueño del intercambio');
+        const completedAt = proposal.proposerReceived?.confirmedAt || proposal.ownerReceived?.confirmedAt;
+        const alreadyRated = hasAlreadyRatedTrade(proposal.tradeId);
+        const safeOtherUserId = escapeForOnclickArg(otherUserId);
+        const safeOtherUserName = escapeForOnclickArg(otherUserName);
+        const safeTradeId = escapeForOnclickArg(proposal.tradeId);
+
+        return `
+            <div class="bg-white dark:bg-gray-700 rounded-lg shadow p-4 border border-green-300 dark:border-green-600">
+                <div class="flex items-start justify-between mb-3">
+                    <div>
+                        <h4 class="font-semibold text-gray-900 dark:text-white">
+                            ${proposal.tradeName || 'Intercambio completado'}
+                        </h4>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            Con: ${otherUserName}${completedAt ? ' • ' + formatRelativeTime(completedAt) : ''}
+                        </p>
+                    </div>
+                    <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 font-medium">
+                        ✅ Completado
+                    </span>
+                </div>
+                <div class="flex gap-2 flex-wrap mt-2">
+                    ${!alreadyRated && otherUserId ? `
+                        <button onclick="window.showRatingModal('${safeOtherUserId}', '${safeOtherUserName}', '${safeTradeId}')"
+                                class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded text-sm font-semibold">
+                            ⭐ Dejar Valoración
+                        </button>
+                    ` : alreadyRated ? `
+                        <span class="px-4 py-2 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded text-sm font-semibold">
+                            ✅ Ya has valorado este intercambio
+                        </span>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Función para cargar los intercambios completados en el tab de Intercambios
+async function loadCompletedTrades() {
+    const container = document.getElementById('completedTradesContainer');
+    await renderCompletedTradesList(container);
+}
+
+// Función para cargar el historial de intercambios en el perfil
+async function loadProfileTradesHistory() {
+    const container = document.getElementById('profileTradesHistoryContainer');
+    await renderCompletedTradesList(container);
 }
 
 // Función para cargar propuestas recibidas
@@ -5553,6 +5678,19 @@ window.cancelProposal = async function (proposalId, tradeId) {
     }
 };
 
+// Función para comprobar si el usuario ya ha valorado un intercambio
+function hasAlreadyRatedTrade(tradeId) {
+    if (!currentUser || !tradeId) return false;
+    const ratedTradesKey = `ratedTrades_${currentUser.uid}`;
+    const ratedTrades = JSON.parse(localStorage.getItem(ratedTradesKey) || '[]');
+    return ratedTrades.includes(tradeId);
+}
+
+// Escapa un valor para su uso seguro como argumento de string en un atributo onclick
+function escapeForOnclickArg(str) {
+    return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 // Sistema de valoración con Pokéballs
 const POKEBALL_RATINGS = {
     0: {
@@ -5598,13 +5736,24 @@ const POKEBALL_RATINGS = {
     }
 };
 
+// Colores de hover para cada Pokéball
+const POKEBALL_HOVER_COLORS = {
+    1: 'rgba(240,240,240,0.3)',
+    2: 'rgba(239,68,68,0.2)',
+    3: 'rgba(59,130,246,0.2)',
+    4: 'rgba(75,85,99,0.2)',
+    5: 'rgba(139,92,246,0.2)'
+};
+
 // Función para mostrar el modal de valoración
 function showRatingModal(userId, userName, tradeId) {
+    // Remove existing modal if any
+    const existing = document.getElementById('ratingModal');
+    if (existing) existing.remove();
+
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
     modal.id = 'ratingModal';
-
-    let selectedRating = 0;
 
     modal.innerHTML = `
                 <div class="bg-white dark:bg-gray-800 rounded-xl max-w-md w-full p-6 shadow-2xl">
@@ -5620,13 +5769,13 @@ function showRatingModal(userId, userName, tradeId) {
                     <!-- Sistema de Pokéballs -->
                     <div class="mb-6">
                         <div class="flex justify-center gap-3 mb-4" id="pokeballRating">
-                            ${[1, 2, 3, 4, 5].map(rating => `
-                                <button onclick="selectRating(${rating})" 
-                                        class="pokeball-rating transform transition-all hover:scale-125 p-2"
-                                        data-rating="${rating}"
-                                        title="${POKEBALL_RATINGS[rating].name}">
-                                    <img src="${POKEBALL_RATINGS[rating].image}" 
-                                         alt="${POKEBALL_RATINGS[rating].name}"
+                            ${[1, 2, 3, 4, 5].map(ratingVal => `
+                                <button onclick="selectRating(${ratingVal})" 
+                                        class="pokeball-rating transform transition-all hover:scale-125 p-2 rounded-xl"
+                                        data-rating="${ratingVal}"
+                                        title="${POKEBALL_RATINGS[ratingVal].name}">
+                                    <img src="${POKEBALL_RATINGS[ratingVal].image}" 
+                                         alt="${POKEBALL_RATINGS[ratingVal].name}"
                                          class="w-12 h-12 opacity-30 grayscale transition-all pokeball-img">
                                 </button>
                             `).join('')}
@@ -5664,7 +5813,32 @@ function showRatingModal(userId, userName, tradeId) {
             `;
 
     document.body.appendChild(modal);
+
+    // Añadir efectos de hover con color para cada Pokéball
+    modal.querySelectorAll('.pokeball-rating').forEach(btn => {
+        const btnRating = parseInt(btn.getAttribute('data-rating'));
+        const hoverColor = POKEBALL_HOVER_COLORS[btnRating];
+        btn.addEventListener('mouseenter', () => {
+            btn.style.backgroundColor = hoverColor;
+            const img = btn.querySelector('img');
+            if (!img.classList.contains('opacity-100')) {
+                img.classList.remove('grayscale', 'opacity-30');
+                img.classList.add('opacity-80');
+            }
+        });
+        btn.addEventListener('mouseleave', () => {
+            btn.style.backgroundColor = '';
+            const img = btn.querySelector('img');
+            if (!img.classList.contains('opacity-100')) {
+                img.classList.add('grayscale', 'opacity-30');
+                img.classList.remove('opacity-80');
+            }
+        });
+    });
 }
+
+// Exponer showRatingModal globalmente para uso desde onclick
+window.showRatingModal = showRatingModal;
 
 // Función para seleccionar rating
 window.selectRating = function (rating) {
@@ -5760,6 +5934,16 @@ window.submitRating = function (userId, userName, tradeId) {
     // Cerrar modal y mostrar confirmación
     document.getElementById('ratingModal').remove();
     showNotification(`✅ Valoración enviada: ${rating} ${POKEBALL_RATINGS[rating].emoji}`, 'success', 3000);
+
+    // Marcar este intercambio como valorado por el usuario actual
+    if (tradeId && currentUser) {
+        const ratedTradesKey = `ratedTrades_${currentUser.uid}`;
+        const ratedTrades = JSON.parse(localStorage.getItem(ratedTradesKey) || '[]');
+        if (!ratedTrades.includes(tradeId)) {
+            ratedTrades.push(tradeId);
+            localStorage.setItem(ratedTradesKey, JSON.stringify(ratedTrades));
+        }
+    }
 };
 
 // Función para actualizar el promedio de valoración
