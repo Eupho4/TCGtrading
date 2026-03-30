@@ -6,6 +6,29 @@ const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const stripeService = require('./stripe-service');
 
+// ── Shipping / tracking helpers ───────────────────────────────────────────────
+
+/**
+ * Validate that a tracking number matches the standard Correos España format:
+ * two uppercase letters, nine digits, two uppercase letters (e.g. ES123456789ES).
+ *
+ * @param {string} trackingNumber
+ * @returns {boolean}
+ */
+function validateCorreosTrackingNumber(trackingNumber) {
+    return /^[A-Z]{2}\d{9}[A-Z]{2}$/.test(trackingNumber.toUpperCase());
+}
+
+/**
+ * Build the Correos España shipment-tracking URL for a given tracking number.
+ *
+ * @param {string} trackingNumber
+ * @returns {string}
+ */
+function getCorreosTrackingUrl(trackingNumber) {
+    return `https://www.correos.es/es/es/herramientas/localizador/detalles?numero=${encodeURIComponent(trackingNumber)}`;
+}
+
 // ── Stripe error helper ───────────────────────────────────────────────────────
 /**
  * Map a Stripe (or generic) error to an appropriate HTTP status code and a
@@ -519,10 +542,18 @@ app.post('/api/stripe/payment/refund', stripeApiLimiter, async (req, res) => {
  */
 app.post('/api/stripe/payment/tracking', stripeApiLimiter, async (req, res) => {
     try {
-        const { tradeId, sellerFirebaseUid, trackingNumber, carrier = '' } = req.body;
+        const { tradeId, sellerFirebaseUid, trackingNumber, carrier = 'Correos' } = req.body;
 
         if (!tradeId || !sellerFirebaseUid || !trackingNumber) {
             return res.status(400).json({ success: false, error: 'tradeId, sellerFirebaseUid and trackingNumber are required' });
+        }
+
+        // Validate Correos España format when carrier is Correos (or not specified)
+        if (carrier === 'Correos' && !validateCorreosTrackingNumber(trackingNumber)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Formato de número de seguimiento de Correos inválido. Debe tener el formato: 2 letras + 9 números + 2 letras (ej: ES123456789ES)'
+            });
         }
 
         const result = await pool.query(
@@ -542,13 +573,18 @@ app.post('/api/stripe/payment/tracking', stripeApiLimiter, async (req, res) => {
             `UPDATE trade_payments
                 SET tracking_number   = $2,
                     tracking_carrier  = $3,
+                    shipping_status   = 'SHIPPED',
                     payment_status    = 'requires_capture',
                     updated_at        = NOW()
               WHERE trade_id = $1`,
             [tradeId, trackingNumber, carrier]
         );
 
-        res.json({ success: true, message: 'Tracking information saved' });
+        const trackingUrl = carrier === 'Correos'
+            ? getCorreosTrackingUrl(trackingNumber)
+            : null;
+
+        res.json({ success: true, message: 'Tracking information saved', trackingUrl });
 
     } catch (error) {
         console.error('Error saving tracking info:', error.message);
@@ -573,7 +609,7 @@ app.get('/api/stripe/payment/status', stripeApiLimiter, async (req, res) => {
             `SELECT payment_type, gross_amount_cents, commission_cents,
                     stripe_fee_cents, net_amount_cents,
                     payment_status, tracking_number, tracking_carrier,
-                    created_at, updated_at
+                    shipping_status, created_at, updated_at
                FROM trade_payments WHERE trade_id = $1`,
             [tradeId]
         );
@@ -583,19 +619,24 @@ app.get('/api/stripe/payment/status', stripeApiLimiter, async (req, res) => {
         }
 
         const p = result.rows[0];
+        const trackingUrl = p.tracking_number && p.tracking_carrier === 'Correos'
+            ? getCorreosTrackingUrl(p.tracking_number)
+            : null;
         res.json({
             success: true,
             payment: {
-                paymentType:   p.payment_type,
-                grossEur:      (p.gross_amount_cents / 100).toFixed(2),
-                commissionEur: (p.commission_cents / 100).toFixed(2),
-                stripeFeeEur:  (p.stripe_fee_cents / 100).toFixed(2),
-                netEur:        (p.net_amount_cents / 100).toFixed(2),
-                status:        p.payment_status,
-                trackingNumber:p.tracking_number,
-                carrier:       p.tracking_carrier,
-                createdAt:     p.created_at,
-                updatedAt:     p.updated_at
+                paymentType:    p.payment_type,
+                grossEur:       (p.gross_amount_cents / 100).toFixed(2),
+                commissionEur:  (p.commission_cents / 100).toFixed(2),
+                stripeFeeEur:   (p.stripe_fee_cents / 100).toFixed(2),
+                netEur:         (p.net_amount_cents / 100).toFixed(2),
+                status:         p.payment_status,
+                trackingNumber: p.tracking_number,
+                carrier:        p.tracking_carrier,
+                shippingStatus: p.shipping_status || 'PENDING',
+                trackingUrl,
+                createdAt:      p.created_at,
+                updatedAt:      p.updated_at
             }
         });
 
@@ -959,7 +1000,8 @@ async function initializePaymentTables() {
                 stripe_refund_id      VARCHAR(64),
                 payment_status        VARCHAR(24)  NOT NULL DEFAULT 'pending',
                 tracking_number       VARCHAR(64),
-                tracking_carrier      VARCHAR(32),
+                tracking_carrier      VARCHAR(32)  DEFAULT 'Correos',
+                shipping_status       VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
                 notes                 TEXT,
                 created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
                 updated_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -969,6 +1011,21 @@ async function initializePaymentTables() {
         await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_buyer ON trade_payments (buyer_firebase_uid)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_seller ON trade_payments (seller_firebase_uid)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_status ON trade_payments (payment_status)`);
+
+        // Migrate existing deployments: add shipping_status column if not present
+        await client.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'trade_payments' AND column_name = 'shipping_status'
+                ) THEN
+                    ALTER TABLE trade_payments
+                        ADD COLUMN shipping_status VARCHAR(16) NOT NULL DEFAULT 'PENDING';
+                END IF;
+            END
+            $$
+        `);
 
         // Ensure UNIQUE constraints exist on user_stripe_accounts even if the
         // table was created before these constraints were part of the schema.
