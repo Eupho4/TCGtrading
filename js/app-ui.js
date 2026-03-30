@@ -76,6 +76,7 @@ setTimeout(() => {
 let currentUser = null;
 let allSets = []; // Cache para todos los sets de la API
 let userCardsCache = []; // Cache para las cartas del usuario
+let userCardsCacheUid = null; // UID del usuario cuyas cartas están en caché
 
 // Cache de precios para cartas en intercambios
 const tradePriceCache = new Map();
@@ -1921,8 +1922,8 @@ window.searchCardForTrade = async function (input, type, cardIndex) {
 
     // Para cartas ofrecidas, buscar solo en la colección del usuario
     if (type === 'offered') {
-        // Cargar colección si no está en caché
-        if (!userCardsCache || userCardsCache.length === 0) {
+        // Cargar colección si no está en caché o pertenece a otro usuario
+        if (!userCardsCache || userCardsCache.length === 0 || userCardsCacheUid !== currentUser?.uid) {
             if (!currentUser) {
                 resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">Inicia sesión para buscar en tu colección</div>`;
                 return;
@@ -1931,6 +1932,7 @@ window.searchCardForTrade = async function (input, type, cardIndex) {
                 const myCardsCollectionRef = collection(db, `users/${currentUser.uid}/my_cards`);
                 const querySnapshot = await getDocs(myCardsCollectionRef);
                 userCardsCache = [];
+                userCardsCacheUid = currentUser.uid;
                 querySnapshot.forEach(doc => {
                     userCardsCache.push({ id: doc.id, ...doc.data() });
                 });
@@ -2233,12 +2235,13 @@ window.addFromMyCards = async function (type) {
         return;
     }
 
-    // Si no hay cache, cargar las cartas desde Firestore
-    if (!userCardsCache || userCardsCache.length === 0) {
+    // Si no hay cache o pertenece a otro usuario, cargar las cartas desde Firestore
+    if (!userCardsCache || userCardsCache.length === 0 || userCardsCacheUid !== currentUser.uid) {
         try {
             const myCardsCollectionRef = collection(db, `users/${currentUser.uid}/my_cards`);
             const querySnapshot = await getDocs(myCardsCollectionRef);
             userCardsCache = [];
+            userCardsCacheUid = currentUser.uid;
 
             querySnapshot.forEach(doc => {
                 userCardsCache.push({ id: doc.id, ...doc.data() });
@@ -3666,7 +3669,7 @@ window.searchProposalCard = async function (input, uniqueId) {
 
     if (isOffered) {
         // Para cartas ofrecidas en propuesta, buscar solo en la colección del usuario
-        if (!userCardsCache || userCardsCache.length === 0) {
+        if (!userCardsCache || userCardsCache.length === 0 || userCardsCacheUid !== currentUser?.uid) {
             if (!currentUser) {
                 resultsContainer.innerHTML = `<div class="p-3 text-center text-gray-500 dark:text-gray-400">Inicia sesión para buscar en tu colección</div>`;
                 return;
@@ -3675,6 +3678,7 @@ window.searchProposalCard = async function (input, uniqueId) {
                 const myCardsCollectionRef = collection(db, `users/${currentUser.uid}/my_cards`);
                 const querySnapshot = await getDocs(myCardsCollectionRef);
                 userCardsCache = [];
+                userCardsCacheUid = currentUser.uid;
                 querySnapshot.forEach(doc => {
                     userCardsCache.push({ id: doc.id, ...doc.data() });
                 });
@@ -8086,8 +8090,8 @@ async function loadMyCollection(userId) {
     showLoadingSpinner();
 
     try {
-        // Si tenemos sincronización activa, usar los datos del cache
-        if (dataSync && userCardsCache.length > 0) {
+        // Si tenemos sincronización activa y el caché pertenece al mismo usuario, usar los datos del cache
+        if (dataSync && userCardsCache.length > 0 && userCardsCacheUid === userId) {
             console.log('📦 Usando datos sincronizados de la colección');
         } else {
             // Fallback: cargar desde Firestore directamente
@@ -8095,6 +8099,7 @@ async function loadMyCollection(userId) {
             const myCardsCollectionRef = collection(db, `users/${userId}/my_cards`);
             const querySnapshot = await getDocs(myCardsCollectionRef);
             userCardsCache = [];
+            userCardsCacheUid = userId;
 
             querySnapshot.forEach(doc => {
                 userCardsCache.push({ id: doc.id, ...doc.data() });
@@ -8840,6 +8845,7 @@ window.logoutUser = async () => {
 
         // Limpiar cualquier dato en caché
         userCardsCache = [];
+        userCardsCacheUid = null;
 
         // Limpiar formularios si existen
         const forms = document.querySelectorAll('form');
@@ -10283,6 +10289,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Escuchar cambios de autenticación
     onAuthStateChanged(auth, async (user) => {
+        // Limpiar caché de cartas al cambiar de usuario para evitar mezcla de colecciones
+        if (!user || (currentUser?.uid && currentUser.uid !== user.uid)) {
+            userCardsCache = [];
+            userCardsCacheUid = null;
+        }
+
         currentUser = user;
         window.currentUser = user; // Actualizar referencia global
         console.log('🔐 onAuthStateChanged ejecutado. Usuario:', !!user, user?.email);
