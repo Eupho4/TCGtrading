@@ -4335,11 +4335,27 @@ function renderReceivedProposalCards(proposals, emptyMessage) {
                                 ❌ Cancelar intercambio
                             </button>
                         ` : ''}
-                        ${proposal.status === 'accepted' ? `
+                        ${proposal.status === 'accepted' && !proposal.ownerReceived ? `
                             <button onclick="window.openCheckoutForProposal('${proposal.id}', '${proposal.tradeId}', true)"
                                     class="px-4 py-2 ${proposal.ownerCheckout ? 'bg-teal-500 hover:bg-teal-600' : 'bg-orange-500 hover:bg-orange-600'} text-white rounded text-sm font-semibold">
                                 ${proposal.ownerCheckout ? '✏️ Editar envío y pago' : '🚚 Completar envío y pago'}
                             </button>
+                            ${proposal.ownerCheckout && proposal.proposerCheckout ? `
+                            <button onclick="window.confirmItemReceived('${proposal.id}', '${proposal.tradeId}', true)"
+                                    class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm font-semibold">
+                                📬 Confirmar recepción
+                            </button>
+                            ` : ''}
+                        ` : ''}
+                        ${proposal.status === 'accepted' && proposal.ownerReceived ? `
+                            <span class="px-4 py-2 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded text-sm font-semibold">
+                                ✅ Recepción confirmada
+                            </span>
+                            ${!proposal.proposerReceived ? `
+                            <span class="px-3 py-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded text-sm">
+                                ⏳ Esperando confirmación del otro usuario
+                            </span>
+                            ` : ''}
                         ` : ''}
                         <button onclick="deleteReceivedProposal('${proposal.id}', '${proposal.tradeId}')"
                                 class="px-2 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded text-sm"
@@ -4413,11 +4429,27 @@ function renderSentProposalCards(proposals) {
                                 Cancelar Propuesta
                             </button>
                         ` : ''}
-                        ${proposal.status === 'accepted' ? `
+                        ${proposal.status === 'accepted' && !proposal.proposerReceived ? `
                             <button onclick="window.openCheckoutForProposal('${proposal.id}', '${proposal.tradeId}', false)"
                                     class="px-4 py-2 ${proposal.proposerCheckout ? 'bg-teal-500 hover:bg-teal-600' : 'bg-orange-500 hover:bg-orange-600'} text-white rounded text-sm font-semibold">
                                 ${proposal.proposerCheckout ? '✏️ Editar envío y pago' : '🚚 Completar envío y pago'}
                             </button>
+                            ${proposal.ownerCheckout && proposal.proposerCheckout ? `
+                            <button onclick="window.confirmItemReceived('${proposal.id}', '${proposal.tradeId}', false)"
+                                    class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm font-semibold">
+                                📬 Confirmar recepción
+                            </button>
+                            ` : ''}
+                        ` : ''}
+                        ${proposal.status === 'accepted' && proposal.proposerReceived ? `
+                            <span class="px-4 py-2 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded text-sm font-semibold">
+                                ✅ Recepción confirmada
+                            </span>
+                            ${!proposal.ownerReceived ? `
+                            <span class="px-3 py-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded text-sm">
+                                ⏳ Esperando confirmación del otro usuario
+                            </span>
+                            ` : ''}
                         ` : ''}
                         <button onclick="deleteSentProposal('${proposal.id}', '${proposal.tradeId}')"
                                 class="px-2 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded text-sm"
@@ -5147,13 +5179,127 @@ window.submitCheckoutForm = async function (proposalId, tradeId, isOwner) {
     }
 
     if (otherPartyCompleted) {
-        showNotification('🎉 ¡Ambos usuarios han completado los datos! El intercambio está listo para proceder.', 'info', 6000);
-        // Una vez que los dos completaron el checkout, mostrar valoraciones
+        showNotification('🎉 ¡Ambos usuarios han completado los datos de envío! Confirma la recepción cuando recibas las cartas.', 'info', 6000);
+        // Notificar al otro participante que ya puede confirmar recepción
+        const recipientUserId = isOwner ? proposal.fromUserId : proposal.ownerUserId;
+        if (recipientUserId) {
+            const senderUserName = localStorage.getItem(`username_${currentUser.uid}`) || currentUser.email.split('@')[0];
+            const bothReadyNotif = {
+                id: `notif_${Date.now()}`,
+                type: 'both_checkout_completed',
+                title: '📦 ¡Ambos listos para el envío!',
+                message: `${senderUserName} también ha completado sus datos. Cuando recibas las cartas, confirma la recepción.`,
+                tradeId,
+                proposalId,
+                from: senderUserName,
+                timestamp: new Date().toISOString(),
+                read: false
+            };
+            await saveNotificationForUser(recipientUserId, bothReadyNotif);
+        }
+    }
+
+    loadReceivedProposals();
+    loadSentProposals();
+};
+
+/**
+ * Confirm that the current user has received the traded items.
+ * Once BOTH parties confirm receipt, the trade is marked as completed
+ * and the rating modal is shown.
+ *
+ * @param {string} proposalId - ID of the accepted proposal
+ * @param {string} tradeId    - ID of the trade
+ * @param {boolean} isOwner   - true if the current user is the trade owner
+ */
+window.confirmItemReceived = async function (proposalId, tradeId, isOwner) {
+    if (!currentUser) return;
+
+    const proposal = await findProposalForCurrentUser(proposalId, tradeId);
+    if (!proposal) {
+        showNotification('No se encontró la propuesta.', 'error');
+        return;
+    }
+
+    // Both parties must have completed checkout before confirming receipt
+    if (!proposal.ownerCheckout || !proposal.proposerCheckout) {
+        showNotification('Ambos usuarios deben completar los datos de envío antes de confirmar la recepción.', 'warning');
+        return;
+    }
+
+    // Mark this user as having confirmed receipt
+    if (isOwner) {
+        proposal.ownerReceived = { confirmedAt: new Date().toISOString() };
+    } else {
+        proposal.proposerReceived = { confirmedAt: new Date().toISOString() };
+    }
+
+    // Persist updated proposal
+    const localProposals = getLocalTradeProposals(tradeId);
+    const updatedProposals = localProposals.map(p => p.id === proposalId ? { ...proposal } : p);
+    saveLocalTradeProposals(tradeId, updatedProposals);
+    await persistProposalForUsers(proposal);
+
+    const currentUserName = localStorage.getItem(`username_${currentUser.uid}`) || currentUser.email.split('@')[0];
+    const otherUserId = isOwner ? proposal.fromUserId : proposal.ownerUserId;
+
+    const bothConfirmed = !!(proposal.ownerReceived && proposal.proposerReceived);
+
+    if (bothConfirmed) {
+        // Mark the trade as completed
+        const userKeys = Object.keys(localStorage).filter(key => key.startsWith('userTrades_'));
+        userKeys.forEach(key => {
+            const trades = JSON.parse(localStorage.getItem(key) || '[]');
+            const tradeIndex = trades.findIndex(t => t.id === tradeId);
+            if (tradeIndex !== -1) {
+                trades[tradeIndex].status = 'completed';
+                trades[tradeIndex].completedAt = new Date().toISOString();
+                localStorage.setItem(key, JSON.stringify(trades));
+            }
+        });
+
+        // Notify the other party that the trade is complete
+        if (otherUserId) {
+            const completeNotif = {
+                id: `notif_${Date.now()}`,
+                type: 'trade_completed',
+                title: '🎉 ¡Intercambio completado!',
+                message: `${currentUserName} ha confirmado la recepción. ¡El intercambio ha finalizado con éxito! Puedes dejar tu valoración.`,
+                tradeId,
+                proposalId,
+                from: currentUserName,
+                timestamp: new Date().toISOString(),
+                read: false
+            };
+            await saveNotificationForUser(otherUserId, completeNotif);
+        }
+
+        showNotification('🎉 ¡Intercambio completado con éxito! Ambos usuarios han confirmado la recepción.', 'success', 6000);
+
+        // Show rating modal for the other user
         setTimeout(() => {
-            const otherName = isOwner ? proposal.fromUserName : 'el dueño del intercambio';
+            const otherName = isOwner ? (proposal.fromUserName || 'el proponente') : 'el dueño del intercambio';
             const otherId   = isOwner ? proposal.fromUserId : proposal.ownerUserId;
             if (otherId) showRatingModal(otherId, otherName, tradeId);
         }, 1000);
+    } else {
+        // Notify the other party to confirm receipt as well
+        if (otherUserId) {
+            const receivedNotif = {
+                id: `notif_${Date.now()}`,
+                type: 'item_received_by_other',
+                title: '📬 Tu compañero ha recibido las cartas',
+                message: `${currentUserName} ha confirmado que recibió las cartas. Por favor, confirma tú también la recepción para finalizar el intercambio.`,
+                tradeId,
+                proposalId,
+                from: currentUserName,
+                timestamp: new Date().toISOString(),
+                read: false
+            };
+            await saveNotificationForUser(otherUserId, receivedNotif);
+        }
+
+        showNotification('✅ Has confirmado la recepción. Esperando a que el otro usuario confirme también.', 'success', 5000);
     }
 
     loadReceivedProposals();
@@ -5326,10 +5472,21 @@ window.viewProposalDetails = async function (proposalId, tradeId) {
                                 </div>
                             ` : proposal.status === 'accepted' ? `
                                 <div class="flex flex-wrap gap-3 justify-center mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                                    <button onclick="this.closest('.fixed').remove(); window.openCheckoutForProposal('${proposalId}', '${tradeId}', ${originalTrade && originalTrade.userId === currentUser.uid});"
-                                            class="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold">
-                                        🚚 Completar envío y pago
-                                    </button>
+                                    ${(() => {
+                                        const isOwnerView = !!(originalTrade && originalTrade.userId === currentUser.uid);
+                                        const myReceived = isOwnerView ? proposal.ownerReceived : proposal.proposerReceived;
+                                        const myCheckout = isOwnerView ? proposal.ownerCheckout : proposal.proposerCheckout;
+                                        const otherCheckout = isOwnerView ? proposal.proposerCheckout : proposal.ownerCheckout;
+                                        if (myReceived) {
+                                            return `<span class="px-6 py-3 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-lg font-semibold">✅ Recepción confirmada</span>`;
+                                        }
+                                        let buttons = '';
+                                        buttons += `<button onclick="this.closest('.fixed').remove(); window.openCheckoutForProposal('${proposalId}', '${tradeId}', ${isOwnerView});" class="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold">🚚 ${myCheckout ? 'Editar envío y pago' : 'Completar envío y pago'}</button>`;
+                                        if (myCheckout && otherCheckout) {
+                                            buttons += `<button onclick="this.closest('.fixed').remove(); window.confirmItemReceived('${proposalId}', '${tradeId}', ${isOwnerView});" class="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold">📬 Confirmar recepción</button>`;
+                                        }
+                                        return buttons;
+                                    })()}
                                     <button onclick="this.closest('.fixed').remove()"
                                             class="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold">
                                         Cerrar
@@ -6148,6 +6305,10 @@ function viewTradeDetails(tradeId) {
                                 <button onclick="this.closest('.fixed').remove(); window.openCheckoutForProposal('${trade.acceptedProposalId}', '${tradeId}', ${currentUser && trade.userId === currentUser.uid})"
                                         class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors">
                                     <span>🚚</span> Completar envío y pago
+                                </button>
+                                <button onclick="this.closest('.fixed').remove(); window.confirmItemReceived('${trade.acceptedProposalId}', '${tradeId}', ${currentUser && trade.userId === currentUser.uid})"
+                                        class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors">
+                                    <span>📬</span> Confirmar recepción
                                 </button>
                             ` : ''}
                             ${currentUser && trade.userId !== currentUser.uid && !isAwaitingCheckout && !isCompleted ? `
