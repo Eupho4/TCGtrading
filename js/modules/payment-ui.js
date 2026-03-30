@@ -369,13 +369,22 @@ export async function renderTradePaymentPanel(container, trade, currentUser) {
 
             <!-- Tracking info (if present) -->
             ${payment.trackingNumber ? `
-            <div class="flex items-center gap-2 text-xs bg-white/50 dark:bg-black/20
+            <div class="flex flex-col gap-2 text-xs bg-white/50 dark:bg-black/20
                         rounded-lg px-3 py-2">
-                <span>📦</span>
-                <span>Seguimiento:
-                    <strong>${payment.trackingNumber}</strong>
-                    ${payment.carrier ? `(${payment.carrier})` : ''}
-                </span>
+                <div class="flex items-center gap-2">
+                    <span>📦</span>
+                    <span>Seguimiento:
+                        <strong>${payment.trackingNumber}</strong>
+                        ${payment.carrier ? `(${payment.carrier})` : ''}
+                    </span>
+                </div>
+                ${(isBuyer && payment.carrier === 'Correos') ? `
+                <a href="${payment.trackingUrl}"
+                   target="_blank" rel="noopener noreferrer"
+                   class="inline-flex items-center gap-1.5 text-xs font-medium
+                          text-blue-600 dark:text-blue-400 hover:underline">
+                    🔗 Rastrear envío en Correos
+                </a>` : ''}
             </div>` : ''}
 
             <!-- Action buttons -->
@@ -464,6 +473,9 @@ function openTrackingModal(tradeId, sellerFirebaseUid, panelContainer, trade) {
                                   dark:border-gray-600 bg-white dark:bg-gray-800
                                   text-gray-900 dark:text-white text-sm
                                   focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <p id="trackingFormatHint" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Formato Correos: 2 letras + 9 números + 2 letras (ej: ES123456789ES)
+                    </p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -474,8 +486,7 @@ function openTrackingModal(tradeId, sellerFirebaseUid, panelContainer, trade) {
                                    dark:border-gray-600 bg-white dark:bg-gray-800
                                    text-gray-900 dark:text-white text-sm
                                    focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="">Seleccionar…</option>
-                        <option value="Correos">Correos</option>
+                        <option value="Correos" selected>Correos</option>
                         <option value="SEUR">SEUR</option>
                         <option value="MRW">MRW</option>
                         <option value="GLS">GLS</option>
@@ -502,12 +513,25 @@ function openTrackingModal(tradeId, sellerFirebaseUid, panelContainer, trade) {
     modal.querySelector('#closeTrackingModal').addEventListener('click', close);
     modal.addEventListener('click', e => { if (e.target === modal) close(); });
 
+    // Show/hide the Correos format hint based on carrier selection
+    const carrierSelect = modal.querySelector('#carrierSelect');
+    const formatHint    = modal.querySelector('#trackingFormatHint');
+    carrierSelect.addEventListener('change', () => {
+        formatHint.style.display = carrierSelect.value === 'Correos' ? '' : 'none';
+    });
+
     modal.querySelector('#saveTrackingBtn').addEventListener('click', async () => {
         const trackingNumber = modal.querySelector('#trackingNumberInput').value.trim();
         const carrier        = modal.querySelector('#carrierSelect').value;
 
         if (!trackingNumber) {
             showNotification('Introduce el número de seguimiento.', 'error');
+            return;
+        }
+
+        // Client-side Correos format validation
+        if (carrier === 'Correos' && !/^[A-Za-z]{2}\d{9}[A-Za-z]{2}$/.test(trackingNumber)) {
+            showNotification('Formato inválido. Correos: 2 letras + 9 números + 2 letras (ej: ES123456789ES)', 'error');
             return;
         }
 
