@@ -10523,7 +10523,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('🎉 Usuario registrado exitosamente:', user.email, 'Username:', username);
 
             // Mostrar mensaje de éxito
-            alert(`¡Bienvenido ${username}! Tu cuenta ha sido creada exitosamente.`);
+            showNotification(`¡Bienvenido ${username}! Tu cuenta ha sido creada exitosamente. 🎉`, 'success', 5000);
 
         } catch (error) {
             console.error('❌ Error detallado al registrar:', error);
