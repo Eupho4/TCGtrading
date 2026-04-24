@@ -625,14 +625,13 @@ function refreshActiveTradeComposerPricing() {
 
 // ── Transferible: marcar/desmarcar carta como disponible para intercambio ──
 
-// Actualiza el estado transferible de una carta en Firestore y en el índice global
+// Actualiza el estado transferible de una carta en PostgreSQL y en el índice global
 window.toggleCardTransferable = async function(cardId, cardName, imageUrl, setName, condition, language, customPrice, currentIsTransferable) {
     if (!currentUser) {
         showNotification('Debes iniciar sesión para marcar cartas como transferibles', 'warning', 3000);
         return;
     }
 
-    const cardRef = doc(db, 'users', currentUser.uid, 'my_cards', cardId);
     const transferRef = doc(db, 'transferable_cards', cardId, 'users', currentUser.uid);
 
     // Usar el estado pasado como parámetro; si no, intentar desde caché
@@ -645,9 +644,16 @@ window.toggleCardTransferable = async function(cardId, cardName, imageUrl, setNa
     }
     const newValue = !resolvedCurrent;
 
-    // Paso 1: Actualizar la colección personal del usuario (operación crítica)
+    // Paso 1: Actualizar la colección personal del usuario en PostgreSQL (operación crítica)
     try {
-        await setDoc(cardRef, { isTransferable: newValue }, { merge: true });
+        const updateRes = await fetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards/${encodeURIComponent(cardId)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isTransferable: newValue })
+        });
+        if (!updateRes.ok) {
+            throw new Error(`HTTP ${updateRes.status}`);
+        }
         if (cached) cached.isTransferable = newValue;
     } catch (e) {
         console.error('Error al actualizar carta en colección personal:', e);
@@ -694,15 +700,21 @@ window.toggleCardTransferable = async function(cardId, cardName, imageUrl, setNa
     }
 };
 
-// Guardar/actualizar el precio personal de una carta en Firestore y caché
+// Guardar/actualizar el precio personal de una carta en PostgreSQL y caché
 window.updateCardCustomPrice = async function(cardId, price) {
     if (!currentUser) return;
     try {
-        const cardRef = doc(db, 'users', currentUser.uid, 'my_cards', cardId);
         const priceValue = price !== '' && price !== null && !isNaN(parseFloat(price))
             ? parseFloat(parseFloat(price).toFixed(2))
             : null;
-        await setDoc(cardRef, { customPrice: priceValue }, { merge: true });
+        const updateRes = await fetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards/${encodeURIComponent(cardId)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customPrice: priceValue })
+        });
+        if (!updateRes.ok) {
+            throw new Error(`HTTP ${updateRes.status}`);
+        }
         // Update cache
         const cached = userCardsCache.find(c => c.id === cardId);
         if (cached) cached.customPrice = priceValue;
@@ -8439,16 +8451,15 @@ async function loadMyCollection(userId) {
         if (dataSync && userCardsCache.length > 0 && userCardsCacheUid === userId) {
             console.log('📦 Usando datos sincronizados de la colección');
         } else {
-            // Fallback: cargar desde Firestore directamente
-            console.log('📦 Cargando colección desde Firestore...');
-            const myCardsCollectionRef = collection(db, `users/${userId}/my_cards`);
-            const querySnapshot = await getDocs(myCardsCollectionRef);
-            userCardsCache = [];
+            // Fallback: cargar desde PostgreSQL directamente
+            console.log('📦 Cargando colección desde PostgreSQL...');
+            const response = await fetch(`/api/users/${encodeURIComponent(userId)}/cards`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const payload = await response.json();
+            userCardsCache = Array.isArray(payload?.data) ? payload.data : [];
             userCardsCacheUid = userId;
-
-            querySnapshot.forEach(doc => {
-                userCardsCache.push({ id: doc.id, ...doc.data() });
-            });
         }
 
         // Aplicar filtros
@@ -8702,7 +8713,12 @@ window.removeCardFromCollection = async (cardId) => {
     }
 
     try {
-        await deleteDoc(doc(db, `users/${currentUser.uid}/my_cards/${cardId}`));
+        const deleteRes = await fetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards/${encodeURIComponent(cardId)}`, {
+            method: 'DELETE'
+        });
+        if (!deleteRes.ok) {
+            throw new Error(`HTTP ${deleteRes.status}`);
+        }
         // Si estaba marcada como transferible, limpiar también el índice global
         try {
             await deleteDoc(doc(db, 'transferable_cards', cardId, 'users', currentUser.uid));
@@ -11910,32 +11926,24 @@ async function addCardToCollection(cardId, cardName, imageUrl, setName, series, 
     if (!currentUser) return;
 
     try {
-        const cardRef = doc(db, 'users', currentUser.uid, 'my_cards', cardId);
-        const cardDoc = await getDoc(cardRef);
-
-        if (cardDoc.exists()) {
-            const currentData = cardDoc.data();
-            const newQuantity = (currentData.quantity || 1) + quantity;
-            await setDoc(cardRef, {
-                ...currentData,
-                quantity: newQuantity,
-                condition: condition,
-                lastUpdated: new Date()
-            });
-        } else {
-            await setDoc(cardRef, {
-                id: cardId,
+        const saveRes = await fetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                cardId,
                 name: cardName,
-                imageUrl: imageUrl,
-                set: setName,
-                series: series,
-                number: number,
-                condition: condition,
-                language: language,
-                setId: cardId.split('-')[0],
-                quantity: quantity,
-                addedAt: new Date()
-            });
+                imageUrl: imageUrl || '',
+                set: setName || '',
+                setId: cardId?.split('-')?.[0] || null,
+                series: series || '',
+                number: number || '',
+                condition,
+                language,
+                quantity
+            })
+        });
+        if (!saveRes.ok) {
+            throw new Error(`HTTP ${saveRes.status}`);
         }
     } catch (error) {
         console.error('Error al añadir carta:', error);
