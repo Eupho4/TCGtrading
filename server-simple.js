@@ -5,6 +5,7 @@ const path = require('path');
 const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const stripeService = require('./stripe-service');
+const { initAuthTables, mountAuthRoutes, createRequireAuthForUserId } = require('./server-auth');
 
 // ── Shipping / tracking helpers ───────────────────────────────────────────────
 
@@ -81,6 +82,13 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL
 });
 
+let requireAuthUserId = null;
+try {
+    requireAuthUserId = createRequireAuthForUserId(pool);
+} catch (e) {
+    console.warn('Auth API: deshabilitada hasta que JWT_SECRET esté configurado');
+}
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 // ── Stripe webhooks need the raw body; register BEFORE express.json()
 app.use('/api/stripe/webhooks', express.raw({ type: 'application/json' }));
@@ -124,14 +132,22 @@ app.get('/api/health', (req, res) => {
  */
 app.get('/api/config', (req, res) => {
     res.json({
-        stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null
+        stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
+        authApiEnabled: !!process.env.JWT_SECRET
     });
 });
 
-// ── User collection (PostgreSQL) ────────────────────────────────────────────
-app.get('/api/users/:userId/cards', async (req, res) => {
+if (requireAuthUserId) {
+    mountAuthRoutes(app, pool);
+}
+
+// ── User collection (PostgreSQL) — requiere JWT (mismo userId que en el token) ─
+app.get('/api/users/:userId/cards', requireAuthUserId || ((_req, res) => res.status(503).json({ success: false, error: 'Autenticación no configurada' })), async (req, res) => {
     try {
         const { userId } = req.params;
+        if (String(req.user.id) !== String(userId)) {
+            return res.status(403).json({ success: false, error: 'No autorizado' });
+        }
         const result = await pool.query(
             `SELECT
                 user_id,
@@ -162,9 +178,12 @@ app.get('/api/users/:userId/cards', async (req, res) => {
     }
 });
 
-app.post('/api/users/:userId/cards', async (req, res) => {
+app.post('/api/users/:userId/cards', requireAuthUserId || ((_req, res) => res.status(503).json({ success: false, error: 'Autenticación no configurada' })), async (req, res) => {
     try {
         const { userId } = req.params;
+        if (String(req.user.id) !== String(userId)) {
+            return res.status(403).json({ success: false, error: 'No autorizado' });
+        }
         const {
             cardId,
             name,
@@ -209,9 +228,12 @@ app.post('/api/users/:userId/cards', async (req, res) => {
     }
 });
 
-app.patch('/api/users/:userId/cards/:cardId', async (req, res) => {
+app.patch('/api/users/:userId/cards/:cardId', requireAuthUserId || ((_req, res) => res.status(503).json({ success: false, error: 'Autenticación no configurada' })), async (req, res) => {
     try {
         const { userId, cardId } = req.params;
+        if (String(req.user.id) !== String(userId)) {
+            return res.status(403).json({ success: false, error: 'No autorizado' });
+        }
         const { isTransferable, customPrice, quantity, condition, language } = req.body || {};
 
         const updates = [];
@@ -263,9 +285,12 @@ app.patch('/api/users/:userId/cards/:cardId', async (req, res) => {
     }
 });
 
-app.delete('/api/users/:userId/cards/:cardId', async (req, res) => {
+app.delete('/api/users/:userId/cards/:cardId', requireAuthUserId || ((_req, res) => res.status(503).json({ success: false, error: 'Autenticación no configurada' })), async (req, res) => {
     try {
         const { userId, cardId } = req.params;
+        if (String(req.user.id) !== String(userId)) {
+            return res.status(403).json({ success: false, error: 'No autorizado' });
+        }
         await pool.query('DELETE FROM user_cards WHERE user_id = $1 AND card_id = $2', [userId, cardId]);
         res.json({ success: true });
     } catch (error) {
@@ -1114,6 +1139,7 @@ app.get('/', (req, res) => {
 async function initializePaymentTables() {
     const client = await pool.connect();
     try {
+        await initAuthTables(client);
         await client.query(`
             CREATE TABLE IF NOT EXISTS user_stripe_accounts (
                 id                SERIAL PRIMARY KEY,

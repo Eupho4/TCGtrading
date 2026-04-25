@@ -64,6 +64,60 @@ window.collection = collection;
 window.getDocs = getDocs;
 window.deleteDoc = deleteDoc;
 
+// ── Autenticación del servidor (JWT) + token Firebase (custom) ──
+const AUTH_TOKEN_KEY = 'tcgtrade_auth_token';
+const API_USER_ID_KEY = 'tcgtrade_api_user_id';
+
+function getAuthToken() {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+function setAuthSession(data) {
+    if (data && data.token) {
+        localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+    } else {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+    if (data && data.userId) {
+        localStorage.setItem(API_USER_ID_KEY, data.userId);
+    } else {
+        localStorage.removeItem(API_USER_ID_KEY);
+    }
+}
+
+/**
+ * Añade Authorization si hay sesión API.
+ * @param {RequestInit} [init]
+ */
+function authHeaders(init = {}) {
+    const t = getAuthToken();
+    const h = { ...(init.headers || {}) };
+    if (t) h.Authorization = 'Bearer ' + t;
+    return { ...init, headers: h };
+}
+
+async function authFetch(url, init = {}) {
+    const r = await fetch(url, authHeaders(init));
+    if (r.status === 401) {
+        setAuthSession(null);
+    }
+    return r;
+}
+
+function buildCurrentUserObject(fbUser) {
+    const id = (fbUser && fbUser.uid) || localStorage.getItem(API_USER_ID_KEY);
+    if (!id) return null;
+    const em = (fbUser && fbUser.email) || '';
+    return {
+        uid: id,
+        email: em,
+        displayName: (fbUser && fbUser.displayName) || em.split('@')[0] || 'Usuario',
+        photoURL: fbUser && fbUser.photoURL,
+        getIdToken: async () => (fbUser && (await fbUser.getIdToken())) || null,
+        metadata: (fbUser && fbUser.metadata) || { creationTime: null, lastSignInTime: null }
+    };
+}
+
 // Emitir evento cuando Firebase esté listo (por si algún módulo lo necesita)
 setTimeout(() => {
     window.dispatchEvent(new CustomEvent('firebaseReady', {
@@ -646,7 +700,7 @@ window.toggleCardTransferable = async function(cardId, cardName, imageUrl, setNa
 
     // Paso 1: Actualizar la colección personal del usuario en PostgreSQL (operación crítica)
     try {
-        const updateRes = await fetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards/${encodeURIComponent(cardId)}`, {
+        const updateRes = await authFetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards/${encodeURIComponent(cardId)}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ isTransferable: newValue })
@@ -707,7 +761,7 @@ window.updateCardCustomPrice = async function(cardId, price) {
         const priceValue = price !== '' && price !== null && !isNaN(parseFloat(price))
             ? parseFloat(parseFloat(price).toFixed(2))
             : null;
-        const updateRes = await fetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards/${encodeURIComponent(cardId)}`, {
+        const updateRes = await authFetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards/${encodeURIComponent(cardId)}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ customPrice: priceValue })
@@ -1363,52 +1417,43 @@ async function saveProfileData() {
         console.log('🔧 Firebase db disponible:', !!db);
         console.log('🔧 Firebase auth disponible:', !!auth);
 
-        // Verificar que Firebase esté inicializado correctamente
-        if (!db) {
-            throw new Error('Firebase Firestore no está inicializado');
+        if (window.__useApiAuth) {
+            const res = await authFetch('/api/auth/me', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, lastName, address, birthDate, email, displayName: (document.getElementById('profileUsername')?.value || '').trim() })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Error al guardar');
+            }
+        } else {
+            if (!db) {
+                throw new Error('Firebase Firestore no está inicializado');
+            }
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            await setDoc(userDocRef, profileData, { merge: true });
+            if (email !== currentUser.email) {
+                if (!auth) {
+                    throw new Error('Firebase Auth no está inicializado');
+                }
+                try {
+                    await updateEmail(currentUser, email);
+                    currentUser.email = email;
+                } catch (authError) {
+                    if (authError.code === 'auth/requires-recent-login') {
+                        showProfileSaveMessage('⚠️ Datos guardados pero el email no se pudo actualizar. Vuelve a iniciar sesión para cambiar el email.', 'info');
+                    } else {
+                        showProfileSaveMessage(`⚠️ ${authError.message}`, 'info');
+                    }
+                }
+            }
         }
-
-        // Guardar en Firestore
-        console.log('🔧 Guardando en Firestore...');
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        console.log('🔧 Referencia del documento:', userDocRef);
-
-        await setDoc(userDocRef, profileData, { merge: true });
-        console.log('✅ Datos guardados en Firestore');
 
         // Actualizar el nombre en el header del perfil
         const userNameElement = document.getElementById('profileUserName');
         if (userNameElement) {
             userNameElement.textContent = `${name} ${lastName}`;
-            console.log('✅ Nombre actualizado en header');
-        }
-
-        // Actualizar email en Firebase Auth si ha cambiado
-        if (email !== currentUser.email) {
-            console.log('🔧 Email ha cambiado, actualizando en Auth...');
-            console.log('🔧 Email actual:', currentUser.email);
-            console.log('🔧 Email nuevo:', email);
-
-            if (!auth) {
-                throw new Error('Firebase Auth no está inicializado');
-            }
-
-            try {
-                await updateEmail(currentUser, email);
-                console.log('✅ Email actualizado en Firebase Auth');
-                // Actualizar el objeto currentUser localmente
-                currentUser.email = email;
-            } catch (authError) {
-                console.error('❌ Error al actualizar email en Auth:', authError);
-                console.error('❌ Código de error:', authError.code);
-                console.error('❌ Mensaje de error:', authError.message);
-
-                if (authError.code === 'auth/requires-recent-login') {
-                    showProfileSaveMessage('⚠️ Datos guardados pero el email no se pudo actualizar. Por seguridad, debes volver a iniciar sesión para cambiar el email.', 'info');
-                } else {
-                    showProfileSaveMessage(`⚠️ Datos guardados pero el email no se pudo actualizar: ${authError.message}`, 'info');
-                }
-            }
         }
 
         showProfileSaveMessage('✅ Perfil actualizado correctamente', 'success');
@@ -1511,33 +1556,29 @@ async function changePassword() {
             return;
         }
 
-        console.log('🔧 Validaciones pasadas, reautenticando...');
-        console.log('🔧 Email del usuario:', currentUser.email);
-        console.log('🔧 Firebase Auth disponible:', !!auth);
+        if (window.__useApiAuth) {
+            const res = await authFetch('/api/auth/me/password', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ currentPassword, newPassword })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw Object.assign(new Error(data.error || 'Error'), { code: res.status === 401 ? 'auth/wrong-password' : undefined });
+            }
+            document.getElementById('passwordChangeForm').reset();
+            showPasswordChangeMessage('✅ Contraseña cambiada correctamente', 'success');
+            return;
+        }
 
-        // Verificar que Firebase Auth esté inicializado
+        console.log('🔧 Validaciones pasadas, reautenticando...');
         if (!auth) {
             throw new Error('Firebase Auth no está inicializado');
         }
-
-        // Reautenticar al usuario antes de cambiar la contraseña
-        console.log('🔧 Creando credenciales...');
         const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
-        console.log('🔧 Credenciales creadas:', !!credential);
-
-        console.log('🔧 Iniciando reautenticación...');
         await reauthenticateWithCredential(currentUser, credential);
-        console.log('✅ Reautenticación exitosa');
-
-        // Cambiar la contraseña
-        console.log('🔧 Cambiando contraseña...');
         await updatePassword(currentUser, newPassword);
-        console.log('✅ Contraseña cambiada exitosamente');
-
-        // Limpiar el formulario
         document.getElementById('passwordChangeForm').reset();
-        console.log('✅ Formulario limpiado');
-
         showPasswordChangeMessage('✅ Contraseña cambiada correctamente', 'success');
 
     } catch (error) {
@@ -1572,32 +1613,47 @@ async function loadUserInfo() {
     if (!currentUser) return;
 
     try {
+        let userData = null;
+        if (window.__useApiAuth) {
+            const r = await authFetch('/api/auth/me');
+            if (!r.ok) return;
+            const body = await r.json();
+            const u = body.user;
+            if (!u) return;
+            userData = {
+                username: u.displayName || '',
+                name: (u.profile && u.profile.name) || '',
+                lastName: (u.profile && u.profile.lastName) || '',
+                address: (u.profile && u.profile.address) || '',
+                birthDate: (u.profile && u.profile.birthDate) || '',
+                email: u.email,
+                createdAt: u.createdAt,
+                darkMode: u.profile && typeof u.profile.darkMode !== 'undefined' ? u.profile.darkMode : undefined
+            };
+        } else {
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-        let userData = userDoc.data();
+        userData = userDoc.data();
+        }
+        if (!userData) {
+            return;
+        }
 
-        // MIGRACIÓN AUTOMÁTICA: Si el usuario tiene un name pero no username,
-        // significa que es un usuario antiguo donde el username estaba en name
-        if (userData && userData.name && !userData.username) {
-            console.log('🔄 Detectado usuario antiguo, migrando estructura de datos...');
-
-            // Verificar si el name parece ser un username (sin espacios, formato de usuario)
-            const nameValue = userData.name;
-            const isUsername = !nameValue.includes(' ') && /^[a-zA-Z0-9_]+$/.test(nameValue);
-
-            if (isUsername) {
-                // Migrar: mover name a username
-                userData.username = nameValue;
-                userData.name = ''; // Limpiar el campo name para el nombre real
-
-                // Actualizar en Firestore
-                try {
-                    await setDoc(doc(db, 'users', currentUser.uid), {
-                        username: nameValue,
-                        name: ''
-                    }, { merge: true });
-                    console.log('✅ Datos migrados exitosamente');
-                } catch (migrationError) {
-                    console.error('Error al migrar datos:', migrationError);
+        if (!window.__useApiAuth) {
+            // MIGRACIÓN AUTOMÁTICA: usuario antiguo (Firebase)
+            if (userData && userData.name && !userData.username) {
+                const nameValue = userData.name;
+                const isUsername = !nameValue.includes(' ') && /^[a-zA-Z0-9_]+$/.test(nameValue);
+                if (isUsername) {
+                    userData.username = nameValue;
+                    userData.name = '';
+                    try {
+                        await setDoc(doc(db, 'users', currentUser.uid), {
+                            username: nameValue,
+                            name: ''
+                        }, { merge: true });
+                    } catch (migrationError) {
+                        console.error('Error al migrar datos:', migrationError);
+                    }
                 }
             }
         }
@@ -1627,11 +1683,13 @@ async function loadUserInfo() {
         }
 
         if (userEmailElement) {
-            userEmailElement.textContent = currentUser.email || 'usuario@ejemplo.com';
+            userEmailElement.textContent = userData.email || currentUser.email || 'usuario@ejemplo.com';
         }
 
         if (joinDateElement) {
-            const joinDate = userData?.createdAt?.toDate() || currentUser.metadata?.creationTime;
+            const joinDate = userData?.createdAt?.toDate
+                ? userData.createdAt.toDate()
+                : (userData?.createdAt ? new Date(userData.createdAt) : null) || currentUser.metadata?.creationTime;
             if (joinDate) {
                 const date = new Date(joinDate);
                 joinDateElement.textContent = date.toLocaleDateString('es-ES', {
@@ -1655,7 +1713,7 @@ async function loadUserInfo() {
         if (profileLastNameInput) profileLastNameInput.value = userData?.lastName || '';
         if (profileAddressInput) profileAddressInput.value = userData?.address || '';
         if (profileBirthDateInput) profileBirthDateInput.value = userData?.birthDate || '';
-        if (profileEmailInput) profileEmailInput.value = userData?.email || currentUser.email || '';
+        if (profileEmailInput) profileEmailInput.value = userData?.email || currentUser?.email || '';
 
         // Cargar preferencia de modo oscuro
         loadDarkModePreference(userData);
@@ -1704,10 +1762,18 @@ async function saveDarkModePreference(isDark) {
     if (!currentUser) return;
 
     try {
-        await setDoc(doc(db, 'users', currentUser.uid), {
-            darkMode: isDark,
-            updatedAt: new Date()
-        }, { merge: true });
+        if (window.__useApiAuth) {
+            await authFetch('/api/auth/me', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ darkMode: isDark })
+            });
+        } else {
+            await setDoc(doc(db, 'users', currentUser.uid), {
+                darkMode: isDark,
+                updatedAt: new Date()
+            }, { merge: true });
+        }
 
         applyDarkMode(isDark);
         console.log('✅ Preferencia de modo oscuro guardada:', isDark);
@@ -1750,14 +1816,20 @@ async function loadProfileStats() {
     try {
         console.log('📊 Cargando estadísticas del perfil...');
 
-        // Obtener colección del usuario
+        let cards = [];
+        if (window.__useApiAuth) {
+            const res = await authFetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards`);
+            if (res.ok) {
+                const j = await res.json();
+                cards = Array.isArray(j.data) ? j.data : [];
+            }
+        } else {
         const userCardsRef = collection(db, 'users', currentUser.uid, 'my_cards');
         const userCardsSnapshot = await getDocs(userCardsRef);
-
-        const cards = [];
-        userCardsSnapshot.forEach(doc => {
-            cards.push({ id: doc.id, ...doc.data() });
+        userCardsSnapshot.forEach(docu => {
+            cards.push({ id: docu.id, ...docu.data() });
         });
+        }
 
         // Calcular estadísticas
         // Total de cartas sumando las cantidades
@@ -8453,7 +8525,7 @@ async function loadMyCollection(userId) {
         } else {
             // Fallback: cargar desde PostgreSQL directamente
             console.log('📦 Cargando colección desde PostgreSQL...');
-            const response = await fetch(`/api/users/${encodeURIComponent(userId)}/cards`);
+            const response = await authFetch(`/api/users/${encodeURIComponent(userId)}/cards`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
@@ -8713,7 +8785,7 @@ window.removeCardFromCollection = async (cardId) => {
     }
 
     try {
-        const deleteRes = await fetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards/${encodeURIComponent(cardId)}`, {
+        const deleteRes = await authFetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards/${encodeURIComponent(cardId)}`, {
             method: 'DELETE'
         });
         if (!deleteRes.ok) {
@@ -9194,8 +9266,25 @@ window.logoutUser = async () => {
             window.chatDebug = null;
         }
 
+        if (window.__useApiAuth && getAuthToken()) {
+            try {
+                await authFetch('/api/auth/logout', { method: 'POST' });
+            } catch (e) {
+                console.warn('Logout API:', e);
+            }
+            setAuthSession(null);
+        }
+
         // Cerrar sesión en Firebase
-        await signOut(auth);
+        try {
+            await signOut(auth);
+        } catch (e) {
+            if (e?.code === 'auth/no-auth-user') {
+                // Ya no hay sesión Firebase
+            } else {
+                throw e;
+            }
+        }
 
         // Limpiar datos del usuario actual
         currentUser = null;
@@ -10266,6 +10355,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (resetPasswordSuccess) resetPasswordSuccess.classList.add('hidden');
 
         try {
+            const cfg = await fetch('/api/config').then((r) => r.json());
+            if (cfg.authApiEnabled) {
+                const res = await fetch('/api/auth/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+                if (resetPasswordSuccess) {
+                    resetPasswordSuccess.innerHTML = `<span class="block">${(data && data.message) || 'Solicitud registrada.'}</span>`;
+                    resetPasswordSuccess.classList.remove('hidden');
+                }
+                if (resetEmailInput) resetEmailInput.value = '';
+                setTimeout(() => showAuthModal('login'), 8000);
+                return;
+            }
+
             console.log('📧 Enviando email de recuperación a:', email);
             await sendPasswordResetEmail(auth, email);
 
@@ -10395,6 +10501,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const email = loginEmailInput?.value;
         const password = loginPasswordInput?.value;
 
+        try {
+            const cfg0 = await fetch('/api/config').then((r) => r.json());
+            if (cfg0.authApiEnabled) window.__useApiAuth = true;
+        } catch (e) { /* ignorar */ }
+
         console.log('📧 Email:', email);
         console.log('🔑 Password length:', password?.length);
 
@@ -10408,6 +10519,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (loginError) loginError.classList.add('hidden');
+
+        if (window.__useApiAuth) {
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const errMsg = data.error || 'Error al iniciar sesión';
+                    if (loginError) {
+                        loginError.textContent = errMsg;
+                        loginError.classList.remove('hidden');
+                    }
+                    showNotification(errMsg, 'error');
+                    return;
+                }
+                setAuthSession({ token: data.token, userId: data.user.id });
+                if (data.firebaseToken) {
+                    await signInWithCustomToken(auth, data.firebaseToken);
+                } else {
+                    showNotification('Servidor sin Firebase Admin: Firestore/Chat pueden fallar. Configura FIREBASE_SERVICE_ACCOUNT_JSON', 'warning', 8000);
+                    currentUser = buildCurrentUserObject(null);
+                    window.currentUser = currentUser;
+                }
+                hideAuthModal();
+                showNotification('¡Bienvenido de nuevo!', 'success');
+            } catch (e) {
+                console.error(e);
+                if (loginError) {
+                    loginError.textContent = 'Error de conexión al iniciar sesión';
+                    loginError.classList.remove('hidden');
+                }
+            }
+            return;
+        }
 
         try {
             console.log('🚀 Intentando iniciar sesión con Firebase...');
@@ -10429,6 +10577,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 errorMessage = 'Credenciales inválidas. Verifica tu email y contraseña.';
             } else if (error.code === 'auth/too-many-requests') {
                 errorMessage = 'Demasiados intentos fallidos. Intenta más tarde.';
+            } else if (error.message && error.message.includes('Google')) {
+                errorMessage = 'Esta cuenta usa inicio de sesión con Google. Usa el botón de Google o crea otra cuenta con email y contraseña.';
             }
             if (loginError) {
                 loginError.textContent = errorMessage;
@@ -10461,6 +10611,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Función para manejar el registro
     async function handleRegister() {
+        try {
+            const cfg0 = await fetch('/api/config').then((r) => r.json());
+            if (cfg0.authApiEnabled) window.__useApiAuth = true;
+        } catch (e) { /* ignorar */ }
+
         const username = document.getElementById('registerUsername')?.value?.trim();
         const email = registerEmailInput?.value;
         const password = registerPasswordInput?.value;
@@ -10513,9 +10668,42 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('📝 Username:', username);
             console.log('📧 Email:', email);
 
-            // NOTA: La verificación de nombre de usuario duplicado está deshabilitada
-            // porque requeriría permisos especiales en Firestore para leer todos los usuarios.
-            // En producción, esto se manejaría con una Cloud Function o un índice especial.
+            if (window.__useApiAuth) {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, username })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    if (registerError) {
+                        registerError.textContent = data.error || 'Error al registrar';
+                        registerError.classList.remove('hidden');
+                    }
+                    return;
+                }
+                setAuthSession({ token: data.token, userId: data.user.id });
+                if (data.firebaseToken) {
+                    await signInWithCustomToken(auth, data.firebaseToken);
+                } else {
+                    showNotification('Cuenta creada. Configura Firebase Admin en el VPS para conectar chat y notificaciones.', 'warning', 10000);
+                    currentUser = buildCurrentUserObject(null);
+                    window.currentUser = currentUser;
+                }
+                try {
+                    await authFetch('/api/auth/me', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ displayName: username, name: '', lastName: '' })
+                    });
+                } catch (e) {
+                    console.warn('Perfil inicial:', e);
+                }
+                hideAuthModal();
+                alert(`¡Bienvenido ${username}! Tu cuenta ha sido creada.`);
+                return;
+            }
+
             console.log('ℹ️ Saltando verificación de nombre de usuario duplicado (requiere configuración adicional)');
 
             console.log('🔐 Creando cuenta con Firebase Auth...');
@@ -10523,12 +10711,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const user = userCredential.user;
             console.log('✅ Cuenta creada exitosamente:', user.uid);
 
-            // Crear perfil completo en Firestore
             console.log('💾 Guardando perfil en Firestore...');
             await setDoc(doc(db, 'users', user.uid), {
-                username: username, // Username único elegido en el registro
-                name: '', // Nombre real (se llenará después en el perfil)
-                lastName: '', // Apellido (se llenará después en el perfil)
+                username: username,
+                name: '',
+                lastName: '',
                 email: user.email,
                 createdAt: new Date(),
                 updatedAt: new Date()
@@ -10538,7 +10725,6 @@ document.addEventListener('DOMContentLoaded', () => {
             hideAuthModal();
             console.log('🎉 Usuario registrado exitosamente:', user.email, 'Username:', username);
 
-            // Mostrar mensaje de éxito
             alert(`¡Bienvenido ${username}! Tu cuenta ha sido creada exitosamente.`);
 
         } catch (error) {
@@ -10647,6 +10833,33 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+
+    (async function restoreServerAuthSession() {
+        try {
+            const cfg = await fetch('/api/config').then((r) => r.json());
+            if (!cfg.authApiEnabled) return;
+            window.__useApiAuth = true;
+            const t = getAuthToken();
+            if (!t) return;
+            const st = await authFetch('/api/auth/firebase-token');
+            if (!st.ok) {
+                if (st.status === 401) {
+                    setAuthSession(null);
+                }
+                return;
+            }
+            const d = await st.json();
+            if (d.success && d.firebaseToken) {
+                try {
+                    await signInWithCustomToken(auth, d.firebaseToken);
+                } catch (e) {
+                    console.error('Error restaurando sesión Firebase:', e);
+                }
+            }
+        } catch (e) {
+            console.warn('restoreServerAuthSession:', e);
+        }
+    })();
 
     // Escuchar cambios de autenticación
     onAuthStateChanged(auth, async (user) => {
@@ -11926,7 +12139,7 @@ async function addCardToCollection(cardId, cardName, imageUrl, setName, series, 
     if (!currentUser) return;
 
     try {
-        const saveRes = await fetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards`, {
+        const saveRes = await authFetch(`/api/users/${encodeURIComponent(currentUser.uid)}/cards`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
