@@ -58,12 +58,11 @@ async function getStripe() {
 
 /**
  * Check if the current user has a connected Stripe account.
- * @param {string} firebaseUid
- * @returns {Promise<{ connected: boolean, chargesEnabled: boolean, status: string }>}
+ * @param {string} userId  UUID de app_users
  */
-export async function checkAccountStatus(firebaseUid) {
+export async function checkAccountStatus(userId) {
     try {
-        const res = await fetch(`${API_BASE}/account-status?firebaseUid=${encodeURIComponent(firebaseUid)}`);
+        const res = await fetch(`${API_BASE}/account-status?userId=${encodeURIComponent(userId)}`);
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
         return data;
@@ -77,18 +76,18 @@ export async function checkAccountStatus(firebaseUid) {
  * Start the Stripe Connect Express onboarding flow.
  * Redirects the browser to Stripe's hosted onboarding page.
  *
- * @param {string} firebaseUid
+ * @param {string} userId
  * @param {string} email
  * @param {string} [country='ES']
  * @param {string} [tradeId='']    – Optional, to return to the correct trade
  */
-export async function connectStripeAccount(firebaseUid, email, country = 'ES', tradeId = '') {
+export async function connectStripeAccount(userId, email, country = 'ES', tradeId = '') {
     let notificationShown = false;
     try {
         const res = await fetch(`${API_BASE}/connect/create-account`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ firebaseUid, email, country, tradeId })
+            body:    JSON.stringify({ userId, email, country, tradeId })
         });
 
         const data = await res.json();
@@ -121,14 +120,14 @@ export async function connectStripeAccount(firebaseUid, email, country = 'ES', t
 
 /**
  * Open the Stripe Express Dashboard for an already-connected seller.
- * @param {string} firebaseUid
+ * @param {string} userId
  */
-export async function openStripeDashboard(firebaseUid) {
+export async function openStripeDashboard(userId) {
     try {
         const res = await fetch(`${API_BASE}/connect/dashboard-link`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ firebaseUid })
+            body:    JSON.stringify({ userId })
         });
 
         const data = await res.json();
@@ -185,9 +184,9 @@ export function previewFees(paymentType, grossAmountEur = 0) {
  * @param {string} opts.tradeId
  * @param {'trade_protection'|'direct_sale'} opts.paymentType
  * @param {number} opts.grossAmountEur
- * @param {string} opts.buyerFirebaseUid
+ * @param {string} opts.buyerUserId
  * @param {string} opts.buyerEmail
- * @param {string} opts.sellerFirebaseUid
+ * @param {string} opts.sellerUserId
  * @param {HTMLElement} opts.mountElement  – DOM element to mount the card form into
  * @param {Function}    opts.onSuccess     – Called when payment is confirmed
  * @param {Function}    opts.onError       – Called on payment error
@@ -197,9 +196,9 @@ export async function initPaymentForm({
     tradeId,
     paymentType,
     grossAmountEur,
-    buyerFirebaseUid,
+    buyerUserId,
     buyerEmail,
-    sellerFirebaseUid,
+    sellerUserId,
     mountElement,
     onSuccess,
     onError
@@ -213,9 +212,9 @@ export async function initPaymentForm({
                 tradeId,
                 paymentType,
                 grossAmountEur,
-                buyerFirebaseUid,
+                buyerUserId,
                 buyerEmail,
-                sellerFirebaseUid
+                sellerUserId
             })
         });
 
@@ -264,15 +263,15 @@ export async function initPaymentForm({
  * Buyer confirms they received the cards → release escrow funds to the seller.
  *
  * @param {string} tradeId
- * @param {string} buyerFirebaseUid
+ * @param {string} buyerUserId
  * @returns {Promise<boolean>}
  */
-export async function confirmReceipt(tradeId, buyerFirebaseUid) {
+export async function confirmReceipt(tradeId, buyerUserId) {
     try {
         const res = await fetch(`${API_BASE}/payment/release`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ tradeId, buyerFirebaseUid })
+            body:    JSON.stringify({ tradeId, buyerUserId })
         });
 
         const data = await res.json();
@@ -292,17 +291,17 @@ export async function confirmReceipt(tradeId, buyerFirebaseUid) {
  * Seller provides the shipment tracking number.
  *
  * @param {string} tradeId
- * @param {string} sellerFirebaseUid
+ * @param {string} sellerUserId
  * @param {string} trackingNumber
  * @param {string} [carrier='']
  * @returns {Promise<boolean>}
  */
-export async function addTracking(tradeId, sellerFirebaseUid, trackingNumber, carrier = '') {
+export async function addTracking(tradeId, sellerUserId, trackingNumber, carrier = '') {
     try {
         const res = await fetch(`${API_BASE}/payment/tracking`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ tradeId, sellerFirebaseUid, trackingNumber, carrier })
+            body:    JSON.stringify({ tradeId, sellerUserId, trackingNumber, carrier })
         });
 
         const data = await res.json();
@@ -322,16 +321,16 @@ export async function addTracking(tradeId, sellerFirebaseUid, trackingNumber, ca
  * Open a dispute / request a refund for a trade payment.
  *
  * @param {string} tradeId
- * @param {string} requesterFirebaseUid
+ * @param {string} requesterUserId
  * @param {string} [reason='requested_by_customer']
  * @returns {Promise<boolean>}
  */
-export async function openDispute(tradeId, requesterFirebaseUid, reason = 'requested_by_customer') {
+export async function openDispute(tradeId, requesterUserId, reason = 'requested_by_customer') {
     try {
         const res = await fetch(`${API_BASE}/payment/refund`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ tradeId, requesterFirebaseUid, reason })
+            body:    JSON.stringify({ tradeId, requesterUserId, reason })
         });
 
         const data = await res.json();

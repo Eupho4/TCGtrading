@@ -81,10 +81,10 @@ function calculateFees(paymentType, grossAmountEur = 0) {
  * @param {object} opts
  * @param {string} opts.email        – User's email address
  * @param {string} opts.country      – ISO-3166-1 alpha-2 country code (e.g. 'ES')
- * @param {string} opts.firebaseUid  – Firebase UID (stored in metadata)
+ * @param {string} opts.userId  – app user id (UUID, stored in metadata)
  * @returns {Promise<Stripe.Account>}
  */
-async function createConnectAccount({ email, country = 'ES', firebaseUid }) {
+async function createConnectAccount({ email, country = 'ES', userId }) {
     return getStripeClient().accounts.create({
         type: 'express',
         country,
@@ -94,7 +94,7 @@ async function createConnectAccount({ email, country = 'ES', firebaseUid }) {
             transfers:     { requested: true }
         },
         business_type: 'individual',
-        metadata: { firebase_uid: firebaseUid }
+        metadata: { app_user_id: String(userId) }
     });
 }
 
