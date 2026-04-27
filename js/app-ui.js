@@ -118,6 +118,24 @@ function buildCurrentUserObject(fbUser) {
     };
 }
 
+/** Fase 3+4: buzón, intercambios y notificaciones en el VPS (requiere sesión API) */
+function useVpsInbox() {
+    return !!getAuthToken() && !!window.__useApiAuth;
+}
+
+function toJsonPayload(obj) {
+    return JSON.parse(JSON.stringify(obj, (_k, v) => (v instanceof Date ? v.toISOString() : v)));
+}
+
+async function syncMyTradesFromVps() {
+    if (!useVpsInbox() || !currentUser) return;
+    const r = await authFetch('/api/trades/mine');
+    if (!r.ok) return;
+    const j = await r.json();
+    const list = Array.isArray(j.data) ? j.data : [];
+    localStorage.setItem(`userTrades_${currentUser.uid}`, JSON.stringify(list));
+}
+
 // Emitir evento cuando Firebase esté listo (por si algún módulo lo necesita)
 setTimeout(() => {
     window.dispatchEvent(new CustomEvent('firebaseReady', {
@@ -216,6 +234,14 @@ async function removeRealtimeItem(path, itemId) {
 }
 
 async function getUserNotifications(userId) {
+    if (useVpsInbox() && currentUser && currentUser.uid === userId) {
+        const r = await authFetch('/api/notifications');
+        if (r.ok) {
+            const j = await r.json();
+            const remote = Array.isArray(j.data) ? j.data : [];
+            return mergeRecordsById([...getLocalNotifications(userId), ...remote], 'timestamp');
+        }
+    }
     const localNotifications = getLocalNotifications(userId);
     const remoteNotifications = await getRealtimeItems(`notifications/${userId}`);
     return mergeRecordsById([...localNotifications, ...remoteNotifications], 'timestamp');
@@ -224,10 +250,27 @@ async function getUserNotifications(userId) {
 async function saveNotificationForUser(userId, notification) {
     const updatedNotifications = mergeRecordsById([notification, ...getLocalNotifications(userId)], 'timestamp');
     saveLocalNotifications(userId, updatedNotifications);
+    if (useVpsInbox() && currentUser) {
+        await authFetch('/api/notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ...notification,
+                id: notification.id,
+                targetUserId: userId,
+                fromUserId: notification.fromUserId || currentUser.uid
+            })
+        });
+        return;
+    }
     await saveRealtimeItem(`notifications/${userId}`, notification);
 }
 
 function stopUserInboxListeners() {
+    if (window.__vpsInboxPoll) {
+        clearInterval(window.__vpsInboxPoll);
+        window.__vpsInboxPoll = null;
+    }
     if (typeof notificationsListenerUnsubscribe === 'function') {
         notificationsListenerUnsubscribe();
         notificationsListenerUnsubscribe = null;
@@ -245,6 +288,36 @@ function startUserInboxListeners(userId) {
     if (!userId) return;
 
     stopUserInboxListeners();
+
+    if (useVpsInbox() && currentUser && currentUser.uid === userId) {
+        const poll = async () => {
+            try {
+                const r = await authFetch('/api/notifications');
+                if (!r.ok) return;
+                const j = await r.json();
+                const list = Array.isArray(j.data) ? j.data : [];
+                saveLocalNotifications(userId, list);
+                updateNotificationBadge();
+                if (document.getElementById('notificationsList')) {
+                    loadNotifications();
+                }
+                if (document.getElementById('receivedProposalsList') || document.getElementById('receivedTradesContainer')) {
+                    loadReceivedProposals();
+                }
+            } catch (e) {
+                console.warn('poll inbox:', e);
+            }
+        };
+        poll();
+        notificationsListenerUnsubscribe = () => {
+            if (window.__vpsInboxPoll) {
+                clearInterval(window.__vpsInboxPoll);
+                window.__vpsInboxPoll = null;
+            }
+        };
+        window.__vpsInboxPoll = setInterval(poll, 30000);
+        return;
+    }
 
     let isInitialNotificationsSnapshot = true;
     notificationsListenerUnsubscribe = onValue(ref(realtimeDb, `notifications/${userId}`), (snapshot) => {
@@ -339,12 +412,30 @@ function collectLocalSentProposals(userId) {
 }
 
 async function getReceivedProposalsForUser(userId) {
+    if (useVpsInbox() && currentUser && currentUser.uid === userId) {
+        const r = await authFetch('/api/proposals/received');
+        if (r.ok) {
+            const j = await r.json();
+            const remote = Array.isArray(j.data) ? j.data : [];
+            const localProposals = collectLocalReceivedProposals(userId);
+            return mergeRecordsById([...localProposals, ...remote], 'createdAt');
+        }
+    }
     const localProposals = collectLocalReceivedProposals(userId);
     const remoteProposals = await getRealtimeItems(`tradeProposals/${userId}`);
     return mergeRecordsById([...localProposals, ...remoteProposals], 'createdAt');
 }
 
 async function getSentProposalsForUser(userId) {
+    if (useVpsInbox() && currentUser && currentUser.uid === userId) {
+        const r = await authFetch('/api/proposals/sent');
+        if (r.ok) {
+            const j = await r.json();
+            const remote = Array.isArray(j.data) ? j.data : [];
+            const localProposals = collectLocalSentProposals(userId);
+            return mergeRecordsById([...localProposals, ...remote], 'createdAt');
+        }
+    }
     const localProposals = collectLocalSentProposals(userId);
     const remoteProposals = await getRealtimeItems(`sentTradeProposals/${userId}`);
     return mergeRecordsById([...localProposals, ...remoteProposals], 'createdAt');
@@ -352,6 +443,15 @@ async function getSentProposalsForUser(userId) {
 
 async function persistProposalForUsers(proposal) {
     if (!proposal?.ownerUserId || !proposal?.fromUserId) return;
+
+    if (useVpsInbox()) {
+        await authFetch('/api/proposals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(toJsonPayload(proposal))
+        });
+        return;
+    }
 
     await Promise.all([
         saveRealtimeItem(`tradeProposals/${proposal.ownerUserId}`, proposal),
@@ -361,6 +461,11 @@ async function persistProposalForUsers(proposal) {
 
 async function removeProposalForUsers(proposal) {
     if (!proposal) return;
+
+    if (useVpsInbox() && proposal.id) {
+        await authFetch(`/api/proposals/${encodeURIComponent(proposal.id)}`, { method: 'DELETE' });
+        return;
+    }
 
     const tasks = [];
     if (proposal.ownerUserId) {
@@ -715,8 +820,31 @@ window.toggleCardTransferable = async function(cardId, cardName, imageUrl, setNa
         return;
     }
 
-    // Paso 2: Actualizar el índice global de cartas transferibles (no crítico)
+    // Paso 2: Índice global de transferibles
     try {
+        if (useVpsInbox()) {
+            if (newValue) {
+                const userName = await getUserDisplayName();
+                await authFetch('/api/transferable-cards', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cardId,
+                        cardName,
+                        imageUrl,
+                        setName: setName || '',
+                        userName,
+                        customPrice: customPrice != null ? customPrice : null,
+                        condition: condition || 'NM',
+                        language: language || 'Español'
+                    })
+                });
+                showNotification(`✅ "${cardName}" disponible para intercambio`, 'success', 3000);
+            } else {
+                await authFetch(`/api/transferable-cards/${encodeURIComponent(cardId)}`, { method: 'DELETE' });
+                showNotification(`🔒 "${cardName}" ya no está disponible para intercambio`, 'info', 3000);
+            }
+        } else {
         if (newValue) {
             const userName = await getUserDisplayName();
             await setDoc(transferRef, {
@@ -735,6 +863,7 @@ window.toggleCardTransferable = async function(cardId, cardName, imageUrl, setNa
         } else {
             await deleteDoc(transferRef);
             showNotification(`🔒 "${cardName}" ya no está disponible para intercambio`, 'info', 3000);
+        }
         }
     } catch (e) {
         console.error('No se pudo actualizar el índice global de transferibles:', e);
@@ -774,10 +903,26 @@ window.updateCardCustomPrice = async function(cardId, price) {
         if (cached) cached.customPrice = priceValue;
         // Sync price in transferable_cards index if card is transferable
         if (cached && cached.isTransferable) {
-            try {
-                const transferRef = doc(db, 'transferable_cards', cardId, 'users', currentUser.uid);
-                await setDoc(transferRef, { customPrice: priceValue }, { merge: true });
-            } catch (_) { /* ignorar errores de sincronización */ }
+            if (useVpsInbox()) {
+                const userName = await getUserDisplayName();
+                await authFetch('/api/transferable-cards', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cardId,
+                        customPrice: priceValue,
+                        userName,
+                        cardName: cached.name,
+                        imageUrl: cached.imageUrl,
+                        setName: cached.set
+                    })
+                });
+            } else {
+                try {
+                    const transferRef = doc(db, 'transferable_cards', cardId, 'users', currentUser.uid);
+                    await setDoc(transferRef, { customPrice: priceValue }, { merge: true });
+                } catch (_) { /* ignorar */ }
+            }
         }
         showNotification(priceValue !== null ? `Precio personal actualizado: ${formatTradePrice(priceValue)}` : 'Precio personal eliminado', 'success', 3000);
         return priceValue;
@@ -2893,6 +3038,16 @@ async function loadUserTrades() {
         console.log('🤝 Cargando intercambios del usuario...');
         console.log('👤 Usuario actual:', currentUser.uid);
 
+        if (useVpsInbox()) {
+            const res = await authFetch('/api/trades/mine');
+            if (res.ok) {
+                const j = await res.json();
+                const list = Array.isArray(j.data) ? j.data : [];
+                const userTradesKey = `userTrades_${currentUser.uid}`;
+                localStorage.setItem(userTradesKey, JSON.stringify(list));
+            }
+        }
+
         // Cargar intercambios guardados del usuario ACTUAL (usando su UID)
         const userTradesKey = `userTrades_${currentUser.uid}`;
         const savedTrades = JSON.parse(localStorage.getItem(userTradesKey) || '[]');
@@ -2941,27 +3096,37 @@ async function loadAvailableTrades() {
     try {
         console.log('🎯 Cargando intercambios disponibles...');
 
-        // Cargar TODOS los intercambios de localStorage
         let allAvailableTrades = [];
 
-        // Obtener todas las claves de localStorage que sean de intercambios
+        if (useVpsInbox()) {
+            const res = await fetch('/api/trades/public');
+            if (res.ok) {
+                const j = await res.json();
+                const list = Array.isArray(j.data) ? j.data : [];
+                allAvailableTrades = list
+                    .filter(t => t.userId && String(t.userId) !== String(currentUser.uid))
+                    .map(trade => ({
+                        ...trade,
+                        type: 'available',
+                        userId: trade.userId
+                    }));
+            }
+        } else {
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
 
-            // Si la clave es de intercambios y NO es del usuario actual
             if (key.startsWith('userTrades_') && key !== `userTrades_${currentUser.uid}`) {
                 const trades = JSON.parse(localStorage.getItem(key) || '[]');
 
-                // Añadir todos los intercambios de otros usuarios
                 trades.forEach(trade => {
-                    // Asegurarse de que no se puedan editar intercambios de otros
                     allAvailableTrades.push({
                         ...trade,
-                        type: 'available', // Marcar como disponible, no creado
-                        userId: key.replace('userTrades_', '') // Extraer el userId de la clave
+                        type: 'available',
+                        userId: key.replace('userTrades_', '')
                     });
                 });
             }
+        }
         }
 
         // No mostrar datos de ejemplo, solo intercambios reales
@@ -3245,6 +3410,9 @@ async function deleteTrade(tradeId) {
         let savedTrades = JSON.parse(localStorage.getItem(userTradesKey) || '[]');
         savedTrades = savedTrades.filter(t => t.id !== tradeId);
         localStorage.setItem(userTradesKey, JSON.stringify(savedTrades));
+        if (useVpsInbox()) {
+            await authFetch(`/api/trades/${encodeURIComponent(tradeId)}`, { method: 'DELETE' });
+        }
 
         console.log('✅ Intercambio eliminado exitosamente');
 
@@ -4299,6 +4467,13 @@ window.handleProposalSubmit = async function (event, originalTradeId) {
                 updateNotificationBadge();
             }
         }
+        if (useVpsInbox()) {
+            proposalData.tradeMeta = {
+                hasProposals: originalTradeData.hasProposals,
+                proposalCount: originalTradeData.proposalCount,
+                lastProposalAt: originalTradeData.lastProposalAt
+            };
+        }
     }
 
     // Guardar la propuesta
@@ -4812,7 +4987,11 @@ window.markNotificationAsRead = async function (notifId) {
     if (notif) {
         notif.read = true;
         saveLocalNotifications(currentUser.uid, notifications);
-        await saveRealtimeItem(`notifications/${currentUser.uid}`, notif);
+        if (useVpsInbox()) {
+            await authFetch(`/api/notifications/${encodeURIComponent(notifId)}/read`, { method: 'PATCH' });
+        } else {
+            await saveRealtimeItem(`notifications/${currentUser.uid}`, notif);
+        }
         loadNotifications();
         updateNotificationBadge();
     }
@@ -4839,7 +5018,11 @@ window.deleteNotification = async function (notifId) {
     // Filtrar la notificación a eliminar
     const updatedNotifications = notifications.filter(n => n.id !== notifId);
     saveLocalNotifications(currentUser.uid, updatedNotifications);
-    await removeRealtimeItem(`notifications/${currentUser.uid}`, notifId);
+    if (useVpsInbox()) {
+        await authFetch(`/api/notifications/${encodeURIComponent(notifId)}`, { method: 'DELETE' });
+    } else {
+        await removeRealtimeItem(`notifications/${currentUser.uid}`, notifId);
+    }
 
     // Recargar la lista de notificaciones
     loadNotifications();
@@ -7668,9 +7851,9 @@ async function handleCreateTradeSubmit(e) {
             if (tradeIndex !== -1) {
                 savedTrades[tradeIndex] = tradeData;
                 localStorage.setItem(userTradesKey, JSON.stringify(savedTrades));
-
-                // Aquí se implementará la actualización en Firestore
-                // await updateTradeInFirestore(tradeData);
+                if (useVpsInbox()) {
+                    await authFetch('/api/trades', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toJsonPayload(tradeData)) });
+                }
 
                 showSuccessMessage('¡Intercambio actualizado exitosamente! ✏️');
             } else {
@@ -7690,6 +7873,9 @@ async function handleCreateTradeSubmit(e) {
 
             savedTrades.unshift(tradeData); // Añadir al principio
             localStorage.setItem(userTradesKey, JSON.stringify(savedTrades));
+            if (useVpsInbox()) {
+                await authFetch('/api/trades', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toJsonPayload(tradeData)) });
+            }
 
             // Debug: Verificar estado después de guardar
             console.log('🔍 === DESPUÉS DE GUARDAR ===');
@@ -8791,10 +8977,13 @@ window.removeCardFromCollection = async (cardId) => {
         if (!deleteRes.ok) {
             throw new Error(`HTTP ${deleteRes.status}`);
         }
-        // Si estaba marcada como transferible, limpiar también el índice global
         try {
-            await deleteDoc(doc(db, 'transferable_cards', cardId, 'users', currentUser.uid));
-        } catch (_) { /* ignorar si no existía */ }
+            if (useVpsInbox()) {
+                await authFetch(`/api/transferable-cards/${encodeURIComponent(cardId)}`, { method: 'DELETE' });
+            } else {
+                await deleteDoc(doc(db, 'transferable_cards', cardId, 'users', currentUser.uid));
+            }
+        } catch (_) { /* ignorar */ }
         showNotification('Carta eliminada de tu colección', 'success', 3000);
 
         // Actualizar ambas vistas: Mis Cartas y Mi Colección del perfil
@@ -10545,6 +10734,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentUser = buildCurrentUserObject(null);
                     window.currentUser = currentUser;
                 }
+                try {
+                    await syncMyTradesFromVps();
+                } catch (e) {
+                    /* ignorar */
+                }
                 hideAuthModal();
                 showNotification('¡Bienvenido de nuevo!', 'success');
             } catch (e) {
@@ -10698,6 +10892,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 } catch (e) {
                     console.warn('Perfil inicial:', e);
+                }
+                try {
+                    await syncMyTradesFromVps();
+                } catch (e) {
+                    /* ignorar */
                 }
                 hideAuthModal();
                 alert(`¡Bienvenido ${username}! Tu cuenta ha sido creada.`);
@@ -10874,6 +11073,9 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('🔐 onAuthStateChanged ejecutado. Usuario:', !!user, user?.email);
 
         if (user) {
+            if (useVpsInbox()) {
+                syncMyTradesFromVps().catch(() => {});
+            }
             startUserInboxListeners(user.uid);
         } else {
             stopUserInboxListeners();
@@ -13406,15 +13608,33 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
 
     panel.onclick = handleUsersPanelClick;
 
-    // Consultar Firestore: colección global de cartas transferibles
     (async () => {
         try {
+            let firestoreUsers = [];
+            if (useVpsInbox()) {
+                const res = await fetch('/api/transferable-cards');
+                if (res.ok) {
+                    const j = await res.json();
+                    const rows = Array.isArray(j.data) ? j.data : [];
+                    firestoreUsers = rows
+                        .filter((row) => String(row.card_id) === String(cardId) && (!currentUser || String(row.user_id) !== String(currentUser.uid)))
+                        .map((row) => {
+                            const d = row.data && typeof row.data === 'object' ? row.data : {};
+                            return {
+                                userId: row.user_id,
+                                userName: d.userName || row.display_name || 'Usuario',
+                                customPrice: d.customPrice ?? null,
+                                condition: d.condition || null,
+                                language: d.language || null,
+                                cardImage: d.imageUrl || null
+                            };
+                        });
+                }
+            } else {
             const transferUsersRef = collection(db, 'transferable_cards', cardId, 'users');
             const snapshot = await getDocs(transferUsersRef);
-            const firestoreUsers = [];
             snapshot.forEach(docSnap => {
                 const data = docSnap.data();
-                // Excluir al usuario actual
                 if (currentUser && data.userId === currentUser.uid) return;
                 firestoreUsers.push({
                     userId: data.userId,
@@ -13425,6 +13645,7 @@ window.showUsersWithCard = function(cardId, cardName, cardSet, cardImageUrl, pan
                     cardImage: data.imageUrl || null
                 });
             });
+            }
 
             // Combinar con resultados de localStorage (intercambios creados manualmente)
             const localUsers = getUsersWithCardForTrade(cardName, cardId);

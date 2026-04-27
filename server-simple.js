@@ -5,7 +5,8 @@ const path = require('path');
 const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const stripeService = require('./stripe-service');
-const { initAuthTables, mountAuthRoutes, createRequireAuthForUserId } = require('./server-auth');
+const { initAuthTables, mountAuthRoutes, createRequireAuthForUserId, getJwtSecret, jwtOptions } = require('./server-auth');
+const { initInboxTradesTables, mountInboxTradesRoutes } = require('./server-inbox-trades');
 
 // ── Shipping / tracking helpers ───────────────────────────────────────────────
 
@@ -139,6 +140,7 @@ app.get('/api/config', (req, res) => {
 
 if (requireAuthUserId) {
     mountAuthRoutes(app, pool);
+    mountInboxTradesRoutes(app, pool, getJwtSecret, jwtOptions, dbReadLimiter);
 }
 
 // ── User collection (PostgreSQL) — requiere JWT (mismo userId que en el token) ─
@@ -1140,6 +1142,7 @@ async function initializePaymentTables() {
     const client = await pool.connect();
     try {
         await initAuthTables(client);
+        await initInboxTradesTables(client);
         await client.query(`
             CREATE TABLE IF NOT EXISTS user_stripe_accounts (
                 id                SERIAL PRIMARY KEY,
