@@ -5,6 +5,8 @@ const path = require('path');
 const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const stripeService = require('./stripe-service');
+const { initAuthTables, mountAuthRoutes, createRequireAuthForUserId, getJwtSecret, jwtOptions } = require('./server-auth');
+const { initInboxTradesTables, mountInboxTradesRoutes } = require('./server-inbox-trades');
 
 // ── Shipping / tracking helpers ───────────────────────────────────────────────
 
@@ -81,6 +83,13 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL
 });
 
+let requireAuthUserId = null;
+try {
+    requireAuthUserId = createRequireAuthForUserId(pool);
+} catch (e) {
+    console.warn('Auth API: deshabilitada hasta que JWT_SECRET esté configurado');
+}
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 // ── Stripe webhooks need the raw body; register BEFORE express.json()
 app.use('/api/stripe/webhooks', express.raw({ type: 'application/json' }));
@@ -124,8 +133,172 @@ app.get('/api/health', (req, res) => {
  */
 app.get('/api/config', (req, res) => {
     res.json({
-        stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null
+        stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
+        authApiEnabled: !!process.env.JWT_SECRET
     });
+});
+
+if (requireAuthUserId) {
+    mountAuthRoutes(app, pool);
+    mountInboxTradesRoutes(app, pool, getJwtSecret, jwtOptions, dbReadLimiter);
+}
+
+// ── User collection (PostgreSQL) — requiere JWT (mismo userId que en el token) ─
+app.get('/api/users/:userId/cards', requireAuthUserId || ((_req, res) => res.status(503).json({ success: false, error: 'Autenticación no configurada' })), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (String(req.user.id) !== String(userId)) {
+            return res.status(403).json({ success: false, error: 'No autorizado' });
+        }
+        const result = await pool.query(
+            `SELECT
+                user_id,
+                card_id AS id,
+                card_name AS name,
+                image_url AS "imageUrl",
+                set_name AS "set",
+                set_id AS "setId",
+                series,
+                card_number AS number,
+                card_condition AS condition,
+                language,
+                quantity,
+                is_transferable AS "isTransferable",
+                custom_price AS "customPrice",
+                added_at AS "addedAt",
+                updated_at AS "lastUpdated"
+             FROM user_cards
+             WHERE user_id = $1
+             ORDER BY set_name ASC, card_number ASC`,
+            [userId]
+        );
+
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('Error loading user cards:', error.message);
+        res.status(500).json({ success: false, error: 'Error loading user cards' });
+    }
+});
+
+app.post('/api/users/:userId/cards', requireAuthUserId || ((_req, res) => res.status(503).json({ success: false, error: 'Autenticación no configurada' })), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (String(req.user.id) !== String(userId)) {
+            return res.status(403).json({ success: false, error: 'No autorizado' });
+        }
+        const {
+            cardId,
+            name,
+            imageUrl = '',
+            set = '',
+            setId = null,
+            series = '',
+            number = '',
+            condition = 'NM',
+            language = 'Español',
+            quantity = 1
+        } = req.body || {};
+
+        if (!cardId || !name) {
+            return res.status(400).json({ success: false, error: 'cardId and name are required' });
+        }
+
+        await pool.query(
+            `INSERT INTO user_cards (
+                user_id, card_id, card_name, image_url, set_name, set_id, series, card_number,
+                card_condition, language, quantity, added_at, updated_at
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())
+            ON CONFLICT (user_id, card_id) DO UPDATE
+               SET quantity       = user_cards.quantity + EXCLUDED.quantity,
+                   card_name      = EXCLUDED.card_name,
+                   image_url      = EXCLUDED.image_url,
+                   set_name       = EXCLUDED.set_name,
+                   set_id         = COALESCE(EXCLUDED.set_id, user_cards.set_id),
+                   series         = EXCLUDED.series,
+                   card_number    = EXCLUDED.card_number,
+                   card_condition = EXCLUDED.card_condition,
+                   language       = EXCLUDED.language,
+                   updated_at     = NOW()`,
+            [userId, cardId, name, imageUrl, set, setId, series, number, condition, language, quantity]
+        );
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error upserting user card:', error.message);
+        res.status(500).json({ success: false, error: 'Error saving card' });
+    }
+});
+
+app.patch('/api/users/:userId/cards/:cardId', requireAuthUserId || ((_req, res) => res.status(503).json({ success: false, error: 'Autenticación no configurada' })), async (req, res) => {
+    try {
+        const { userId, cardId } = req.params;
+        if (String(req.user.id) !== String(userId)) {
+            return res.status(403).json({ success: false, error: 'No autorizado' });
+        }
+        const { isTransferable, customPrice, quantity, condition, language } = req.body || {};
+
+        const updates = [];
+        const params = [userId, cardId];
+        let idx = 3;
+
+        if (isTransferable !== undefined) {
+            updates.push(`is_transferable = $${idx++}`);
+            params.push(!!isTransferable);
+        }
+        if (customPrice !== undefined) {
+            updates.push(`custom_price = $${idx++}`);
+            params.push(customPrice === null ? null : Number(customPrice));
+        }
+        if (quantity !== undefined) {
+            updates.push(`quantity = GREATEST(1, $${idx++})`);
+            params.push(Number(quantity) || 1);
+        }
+        if (condition !== undefined) {
+            updates.push(`card_condition = $${idx++}`);
+            params.push(condition);
+        }
+        if (language !== undefined) {
+            updates.push(`language = $${idx++}`);
+            params.push(language);
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ success: false, error: 'No fields to update' });
+        }
+
+        updates.push('updated_at = NOW()');
+
+        const result = await pool.query(
+            `UPDATE user_cards
+                SET ${updates.join(', ')}
+              WHERE user_id = $1 AND card_id = $2`,
+            params
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'Card not found in collection' });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error updating user card:', error.message);
+        res.status(500).json({ success: false, error: 'Error updating card' });
+    }
+});
+
+app.delete('/api/users/:userId/cards/:cardId', requireAuthUserId || ((_req, res) => res.status(503).json({ success: false, error: 'Autenticación no configurada' })), async (req, res) => {
+    try {
+        const { userId, cardId } = req.params;
+        if (String(req.user.id) !== String(userId)) {
+            return res.status(403).json({ success: false, error: 'No autorizado' });
+        }
+        await pool.query('DELETE FROM user_cards WHERE user_id = $1 AND card_id = $2', [userId, cardId]);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting user card:', error.message);
+        res.status(500).json({ success: false, error: 'Error deleting card' });
+    }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -968,6 +1141,8 @@ app.get('/', (req, res) => {
 async function initializePaymentTables() {
     const client = await pool.connect();
     try {
+        await initAuthTables(client);
+        await initInboxTradesTables(client);
         await client.query(`
             CREATE TABLE IF NOT EXISTS user_stripe_accounts (
                 id                SERIAL PRIMARY KEY,
@@ -1007,10 +1182,33 @@ async function initializePaymentTables() {
                 updated_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW()
             )
         `);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS user_cards (
+                id              SERIAL PRIMARY KEY,
+                user_id         VARCHAR(128) NOT NULL,
+                card_id         VARCHAR(128) NOT NULL,
+                card_name       TEXT         NOT NULL,
+                image_url       TEXT,
+                set_name        TEXT,
+                set_id          VARCHAR(64),
+                series          TEXT,
+                card_number     TEXT,
+                card_condition  VARCHAR(16)  NOT NULL DEFAULT 'NM',
+                language        VARCHAR(32)  NOT NULL DEFAULT 'Español',
+                quantity        INTEGER      NOT NULL DEFAULT 1,
+                is_transferable BOOLEAN      NOT NULL DEFAULT FALSE,
+                custom_price    NUMERIC(10,2),
+                added_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE (user_id, card_id)
+            )
+        `);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_trade_id ON trade_payments (trade_id)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_buyer ON trade_payments (buyer_firebase_uid)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_seller ON trade_payments (seller_firebase_uid)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_trade_payments_status ON trade_payments (payment_status)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_user_cards_user_id ON user_cards (user_id)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_user_cards_card_id ON user_cards (card_id)`);
 
         // Migrate existing deployments: add shipping_status column if not present
         await client.query(`
