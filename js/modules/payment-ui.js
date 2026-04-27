@@ -154,7 +154,7 @@ export function renderFeePreview(container, paymentType, grossAmountEur = 0) {
  * @param {'trade_protection'|'direct_sale'} opts.paymentType
  * @param {number} opts.grossAmountEur
  * @param {object} opts.buyer               – { uid, email }
- * @param {string} opts.sellerFirebaseUid
+ * @param {string} opts.sellerUserId
  * @param {Function} [opts.onSuccess]
  */
 export async function openPaymentModal({
@@ -162,7 +162,7 @@ export async function openPaymentModal({
     paymentType = PAYMENT_TYPES.TRADE_PROTECTION,
     grossAmountEur = 0,
     buyer,
-    sellerFirebaseUid,
+    sellerUserId,
     onSuccess
 }) {
     // Remove any stale modal
@@ -262,10 +262,10 @@ export async function openPaymentModal({
             tradeId,
             paymentType,
             grossAmountEur,
-            buyerFirebaseUid:  buyer.uid,
-            buyerEmail:        buyer.email,
-            sellerFirebaseUid,
-            mountElement:      mountEl,
+            buyerUserId:  buyer.uid,
+            buyerEmail:   buyer.email,
+            sellerUserId,
+            mountElement: mountEl,
             onSuccess: (data) => {
                 close();
                 showNotification('¡Pago procesado! Fondos en depósito.', 'success');
@@ -444,7 +444,7 @@ export async function renderTradePaymentPanel(container, trade, currentUser) {
 /**
  * Open a small modal for the seller to enter a shipment tracking number.
  */
-function openTrackingModal(tradeId, sellerFirebaseUid, panelContainer, trade) {
+function openTrackingModal(tradeId, sellerUserId, panelContainer, trade) {
     document.getElementById('trackingModal')?.remove();
 
     const modal = document.createElement('div');
@@ -535,11 +535,11 @@ function openTrackingModal(tradeId, sellerFirebaseUid, panelContainer, trade) {
             return;
         }
 
-        const ok = await addTracking(tradeId, sellerFirebaseUid, trackingNumber, carrier);
+        const ok = await addTracking(tradeId, sellerUserId, trackingNumber, carrier);
         if (ok) {
             close();
             // Refresh the panel
-            const currentUser = { uid: sellerFirebaseUid };
+            const currentUser = { uid: sellerUserId };
             renderTradePaymentPanel(panelContainer, trade, currentUser);
         }
     });

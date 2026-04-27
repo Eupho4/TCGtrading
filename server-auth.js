@@ -53,57 +53,6 @@ async function initAuthTables(client) {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_app_sessions_expires ON app_sessions (expires_at)`);
 }
 
-let firebaseAdmin = null;
-function getFirebaseAdmin() {
-    if (firebaseAdmin) return firebaseAdmin;
-    if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-        return null;
-    }
-    try {
-        // eslint-disable-next-line global-require
-        firebaseAdmin = require('firebase-admin');
-        if (firebaseAdmin.apps.length === 0) {
-            const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-            firebaseAdmin.initializeApp({ credential: firebaseAdmin.credential.cert(sa) });
-        }
-        return firebaseAdmin;
-    } catch (e) {
-        console.warn('firebase-admin: no se pudo inicializar:', e.message);
-        return null;
-    }
-}
-
-async function ensureFirebaseUser(uid, email, password) {
-    const admin = getFirebaseAdmin();
-    if (!admin) return;
-    const a = admin.auth();
-    let ex;
-    try {
-        ex = await a.getUser(uid);
-    } catch (err) {
-        if (err && err.code === 'auth/user-not-found') {
-            ex = null;
-        } else {
-            throw err;
-        }
-    }
-    if (ex) {
-        if (email && ex.email !== email) {
-            await a.updateUser(uid, { email, password, emailVerified: true });
-        } else if (password) {
-            await a.updateUser(uid, { password, emailVerified: true });
-        }
-    } else {
-        await a.createUser({ uid, email, password, emailVerified: true });
-    }
-}
-
-async function createCustomTokenForUid(uid) {
-    const admin = getFirebaseAdmin();
-    if (!admin) return null;
-    return admin.auth().createCustomToken(String(uid));
-}
-
 function pepper(plain) {
     return BCRYPT_PEPPER ? `${plain}${BCRYPT_PEPPER}` : plain;
 }
@@ -177,18 +126,11 @@ function mountAuthRoutes(app, pool) {
             const u = ins.rows[0];
             const sid = await createSession(u.id);
             const token = signSessionJwt(sid);
-            const firebaseToken = await createCustomTokenForUid(String(u.id));
-            try {
-                await ensureFirebaseUser(String(u.id), em, pass);
-            } catch (e) {
-                console.warn('Registro: Firebase Auth no sincronizado:', e.message);
-            }
             return res.json({
                 success: true,
                 user: { id: u.id, email: u.email, displayName: u.display_name, authProvider: u.auth_provider },
                 token,
-                sessionExpiresInDays: SESSION_DAYS,
-                firebaseToken
+                sessionExpiresInDays: SESSION_DAYS
             });
         } catch (e) {
             console.error('auth register:', e.message);
@@ -242,18 +184,11 @@ function mountAuthRoutes(app, pool) {
 
             const sid = await createSession(u.id);
             const token = signSessionJwt(sid);
-            const firebaseToken = await createCustomTokenForUid(String(u.id));
-            try {
-                await ensureFirebaseUser(String(u.id), u.email, pass);
-            } catch (e) {
-                console.warn('Login: Firebase Auth no sincronizado:', e.message);
-            }
             return res.json({
                 success: true,
                 user: { id: u.id, email: u.email, displayName: u.display_name, authProvider: u.auth_provider },
                 token,
-                sessionExpiresInDays: SESSION_DAYS,
-                firebaseToken
+                sessionExpiresInDays: SESSION_DAYS
             });
         } catch (e) {
             console.error('auth login:', e.message);
@@ -268,19 +203,6 @@ function mountAuthRoutes(app, pool) {
         } catch (e) {
             console.error('auth logout:', e.message);
             return res.status(500).json({ success: false, error: 'Error al cerrar sesión' });
-        }
-    });
-
-    r.get('/firebase-token', requireAuth, async (req, res) => {
-        try {
-            const t = await createCustomTokenForUid(String(req.user.id));
-            if (!t) {
-                return res.json({ success: true, firebaseToken: null, message: 'Admin SDK no configurado' });
-            }
-            return res.json({ success: true, firebaseToken: t });
-        } catch (e) {
-            console.error('auth firebase-token:', e.message);
-            return res.status(500).json({ success: false, error: 'No se pudo emitir el token de Firebase' });
         }
     });
 
@@ -399,14 +321,6 @@ function mountAuthRoutes(app, pool) {
             }
             const hash = await hashPassword(newP);
             await pool.query('UPDATE app_users SET password_hash = $2, updated_at = NOW() WHERE id = $1', [req.user.id, hash]);
-            try {
-                const row = await pool.query('SELECT email FROM app_users WHERE id = $1', [req.user.id]);
-                if (row.rows[0]) {
-                    await ensureFirebaseUser(String(req.user.id), row.rows[0].email, newP);
-                }
-            } catch (e) {
-                console.warn('Cambio contraseña: Firebase:', e.message);
-            }
             return res.json({ success: true, message: 'Contraseña actualizada' });
         } catch (e) {
             console.error('auth password:', e.message);
@@ -424,4 +338,4 @@ function createRequireAuthForUserId(pool) {
     return createAuthMiddleware(pool, getJwtSecret(), jwtOptions());
 }
 
-module.exports = { initAuthTables, mountAuthRoutes, getJwtSecret, jwtOptions, createRequireAuthForUserId, ensureFirebaseUser, createCustomTokenForUid };
+module.exports = { initAuthTables, mountAuthRoutes, getJwtSecret, jwtOptions, createRequireAuthForUserId };
