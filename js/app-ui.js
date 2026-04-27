@@ -6,9 +6,9 @@ import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, upda
 import { getDatabase, ref, set, get, remove, onValue } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
 // Importar módulos de chat
-import ChatManager from '/js/modules/chat.js?v=33';
-import ChatUI from '/js/modules/chat-ui.js?v=33';
-import { ChatDebugger } from '/js/modules/chat-debug.js?v=33';
+import ChatManager from '/js/modules/chat.js?v=34';
+import ChatUI from '/js/modules/chat-ui.js?v=34';
+import { ChatDebugger } from '/js/modules/chat-debug.js?v=34';
 
 // Importar módulos de pagos
 import { renderConnectAccountBanner, openPaymentModal } from '/js/modules/payment-ui.js';
@@ -103,6 +103,9 @@ async function authFetch(url, init = {}) {
     }
     return r;
 }
+
+window.authFetch = authFetch;
+window.getAuthToken = getAuthToken;
 
 function buildCurrentUserObject(fbUser) {
     const id = (fbUser && fbUser.uid) || localStorage.getItem(API_USER_ID_KEY);
