@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 const stripeService = require('./stripe-service');
 const { initAuthTables, mountAuthRoutes, createRequireAuthForUserId, getJwtSecret, jwtOptions } = require('./server-auth');
 const { initInboxTradesTables, mountInboxTradesRoutes } = require('./server-inbox-trades');
+const { initChatTables, mountChatRoutes } = require('./server-chat');
 
 // ── Shipping / tracking helpers ───────────────────────────────────────────────
 
@@ -141,6 +142,7 @@ app.get('/api/config', (req, res) => {
 if (requireAuthUserId) {
     mountAuthRoutes(app, pool);
     mountInboxTradesRoutes(app, pool, getJwtSecret, jwtOptions, dbReadLimiter);
+    mountChatRoutes(app, pool, getJwtSecret, jwtOptions, dbReadLimiter);
 }
 
 // ── User collection (PostgreSQL) — requiere JWT (mismo userId que en el token) ─
@@ -310,19 +312,20 @@ app.delete('/api/users/:userId/cards/:cardId', requireAuthUserId || ((_req, res)
  * Create a Stripe Express Connected account for a seller and return the
  * onboarding URL.
  *
- * Body: { firebaseUid, email, country? }
+ * Body: { userId, email, country? } — userId = UUID (app_users); alias: firebaseUid
  */
 app.post('/api/stripe/connect/create-account', stripeApiLimiter, async (req, res) => {
     try {
-        const { firebaseUid, email, country = 'ES', tradeId = '' } = req.body;
-        if (!firebaseUid || !email) {
-            return res.status(400).json({ success: false, error: 'firebaseUid and email are required' });
+        const { userId, firebaseUid, email, country = 'ES', tradeId = '' } = req.body;
+        const appUserId = userId || firebaseUid;
+        if (!appUserId || !email) {
+            return res.status(400).json({ success: false, error: 'userId and email are required' });
         }
 
-        // Check if this user already has an account
+        // Columna legada: firebase_uid almacena el id de usuario de la app (UUID).
         const existing = await pool.query(
             'SELECT stripe_account_id, account_status FROM user_stripe_accounts WHERE firebase_uid = $1',
-            [firebaseUid]
+            [String(appUserId)]
         );
 
         let stripeAccountId;
@@ -330,15 +333,14 @@ app.post('/api/stripe/connect/create-account', stripeApiLimiter, async (req, res
         if (existing.rows.length > 0) {
             stripeAccountId = existing.rows[0].stripe_account_id;
         } else {
-            const account = await stripeService.createConnectAccount({ email, country, firebaseUid });
+            const account = await stripeService.createConnectAccount({ email, country, userId: appUserId });
             stripeAccountId = account.id;
 
-            // Guard: reject if this Stripe account is already linked to a different user.
             const conflict = await pool.query(
                 'SELECT firebase_uid FROM user_stripe_accounts WHERE stripe_account_id = $1',
                 [stripeAccountId]
             );
-            if (conflict.rows.length > 0 && conflict.rows[0].firebase_uid !== firebaseUid) {
+            if (conflict.rows.length > 0 && conflict.rows[0].firebase_uid !== String(appUserId)) {
                 return res.status(409).json({
                     success: false,
                     error: 'This Stripe account is already linked to a different user.'
@@ -349,7 +351,7 @@ app.post('/api/stripe/connect/create-account', stripeApiLimiter, async (req, res
                 `INSERT INTO user_stripe_accounts
                     (firebase_uid, stripe_account_id, account_status, country)
                  VALUES ($1, $2, 'pending', $3)`,
-                [firebaseUid, stripeAccountId, country]
+                [String(appUserId), stripeAccountId, country]
             );
         }
 
@@ -435,13 +437,13 @@ app.get('/api/stripe/connect/refresh', stripeApiLimiter, async (req, res) => {
 /**
  * GET /api/stripe/account-status
  * Returns the current onboarding status for a user.
- * Query: ?firebaseUid=xxx
+ * Query: ?userId=uuid  (alias: firebaseUid)
  */
 app.get('/api/stripe/account-status', stripeApiLimiter, async (req, res) => {
     try {
-        const { firebaseUid } = req.query;
-        if (!firebaseUid) {
-            return res.status(400).json({ success: false, error: 'firebaseUid is required' });
+        const userId = req.query.userId || req.query.firebaseUid;
+        if (!userId) {
+            return res.status(400).json({ success: false, error: 'userId is required' });
         }
 
         const result = await pool.query(
@@ -449,7 +451,7 @@ app.get('/api/stripe/account-status', stripeApiLimiter, async (req, res) => {
                     payouts_enabled, details_submitted, country, currency
                FROM user_stripe_accounts
               WHERE firebase_uid = $1`,
-            [firebaseUid]
+            [String(userId)]
         );
 
         if (result.rows.length === 0) {
@@ -478,18 +480,18 @@ app.get('/api/stripe/account-status', stripeApiLimiter, async (req, res) => {
  * POST /api/stripe/connect/dashboard-link
  * Returns a Stripe Express Dashboard URL for the seller.
  *
- * Body: { firebaseUid }
+ * Body: { userId }  (alias: firebaseUid)
  */
 app.post('/api/stripe/connect/dashboard-link', stripeApiLimiter, async (req, res) => {
     try {
-        const { firebaseUid } = req.body;
-        if (!firebaseUid) {
-            return res.status(400).json({ success: false, error: 'firebaseUid is required' });
+        const appUserId = req.body.userId || req.body.firebaseUid;
+        if (!appUserId) {
+            return res.status(400).json({ success: false, error: 'userId is required' });
         }
 
         const result = await pool.query(
             'SELECT stripe_account_id FROM user_stripe_accounts WHERE firebase_uid = $1',
-            [firebaseUid]
+            [String(appUserId)]
         );
 
         if (result.rows.length === 0) {
@@ -514,8 +516,8 @@ app.post('/api/stripe/connect/dashboard-link', stripeApiLimiter, async (req, res
  *
  * Body: {
  *   tradeId, paymentType, grossAmountEur,
- *   buyerFirebaseUid, buyerEmail,
- *   sellerFirebaseUid
+ *   buyerUserId, buyerEmail, sellerUserId
+ *   (aliases: buyerFirebaseUid, sellerFirebaseUid)
  * }
  */
 app.post('/api/stripe/payment/create-intent', stripeApiLimiter, async (req, res) => {
@@ -524,19 +526,23 @@ app.post('/api/stripe/payment/create-intent', stripeApiLimiter, async (req, res)
             tradeId,
             paymentType = 'trade_protection',
             grossAmountEur = 0,
+            buyerUserId,
             buyerFirebaseUid,
             buyerEmail,
+            sellerUserId,
             sellerFirebaseUid
         } = req.body;
+        const buyerId = buyerUserId || buyerFirebaseUid;
+        const sellerId = sellerUserId || sellerFirebaseUid;
 
-        if (!tradeId || !buyerFirebaseUid || !sellerFirebaseUid) {
-            return res.status(400).json({ success: false, error: 'tradeId, buyerFirebaseUid and sellerFirebaseUid are required' });
+        if (!tradeId || !buyerId || !sellerId) {
+            return res.status(400).json({ success: false, error: 'tradeId, buyerUserId and sellerUserId are required' });
         }
 
         // Look up seller's connected account
         const sellerResult = await pool.query(
             'SELECT stripe_account_id, charges_enabled FROM user_stripe_accounts WHERE firebase_uid = $1',
-            [sellerFirebaseUid]
+            [String(sellerId)]
         );
 
         const sellerStripeAccount = sellerResult.rows.length > 0 && sellerResult.rows[0].charges_enabled
@@ -550,8 +556,8 @@ app.post('/api/stripe/payment/create-intent', stripeApiLimiter, async (req, res)
             sellerStripeAccount,
             buyerEmail,
             metadata: {
-                buyer_firebase_uid:  buyerFirebaseUid,
-                seller_firebase_uid: sellerFirebaseUid
+                buyer_user_id:  String(buyerId),
+                seller_user_id: String(sellerId)
             }
         });
 
@@ -568,7 +574,7 @@ app.post('/api/stripe/payment/create-intent', stripeApiLimiter, async (req, res)
                     payment_status        = 'pending',
                     updated_at            = NOW()`,
             [
-                tradeId, buyerFirebaseUid, sellerFirebaseUid,
+                tradeId, String(buyerId), String(sellerId),
                 sellerStripeAccount, paymentType,
                 fees.grossCents, fees.commissionCents, fees.stripeFeeCents, fees.netCents,
                 paymentIntentId
@@ -598,13 +604,14 @@ app.post('/api/stripe/payment/create-intent', stripeApiLimiter, async (req, res)
  * POST /api/stripe/payment/release
  * Buyer confirms receipt → capture the escrowed funds.
  *
- * Body: { tradeId, buyerFirebaseUid }
+ * Body: { tradeId, buyerUserId }  (alias: buyerFirebaseUid)
  */
 app.post('/api/stripe/payment/release', stripeApiLimiter, async (req, res) => {
     try {
-        const { tradeId, buyerFirebaseUid } = req.body;
-        if (!tradeId || !buyerFirebaseUid) {
-            return res.status(400).json({ success: false, error: 'tradeId and buyerFirebaseUid are required' });
+        const { tradeId, buyerUserId, buyerFirebaseUid } = req.body;
+        const buyerId = buyerUserId || buyerFirebaseUid;
+        if (!tradeId || !buyerId) {
+            return res.status(400).json({ success: false, error: 'tradeId and buyerUserId are required' });
         }
 
         const result = await pool.query(
@@ -619,7 +626,7 @@ app.post('/api/stripe/payment/release', stripeApiLimiter, async (req, res) => {
 
         const payment = result.rows[0];
 
-        if (payment.buyer_firebase_uid !== buyerFirebaseUid) {
+        if (payment.buyer_firebase_uid !== String(buyerId)) {
             return res.status(403).json({ success: false, error: 'Unauthorized' });
         }
 
@@ -652,18 +659,15 @@ app.post('/api/stripe/payment/release', stripeApiLimiter, async (req, res) => {
  * POST /api/stripe/payment/refund
  * Cancel or refund a trade payment (dispute / cancellation).
  *
- * Body: { tradeId, requesterFirebaseUid, reason? }
+ * Body: { tradeId, requesterUserId, reason? }  (alias: requesterFirebaseUid)
  */
 app.post('/api/stripe/payment/refund', stripeApiLimiter, async (req, res) => {
     try {
-        const {
-            tradeId,
-            requesterFirebaseUid,
-            reason = 'requested_by_customer'
-        } = req.body;
+        const { tradeId, requesterUserId, requesterFirebaseUid, reason = 'requested_by_customer' } = req.body;
+        const requesterId = requesterUserId || requesterFirebaseUid;
 
-        if (!tradeId || !requesterFirebaseUid) {
-            return res.status(400).json({ success: false, error: 'tradeId and requesterFirebaseUid are required' });
+        if (!tradeId || !requesterId) {
+            return res.status(400).json({ success: false, error: 'tradeId and requesterUserId are required' });
         }
 
         const result = await pool.query(
@@ -678,7 +682,7 @@ app.post('/api/stripe/payment/refund', stripeApiLimiter, async (req, res) => {
 
         const payment = result.rows[0];
 
-        if (payment.buyer_firebase_uid !== requesterFirebaseUid) {
+        if (payment.buyer_firebase_uid !== String(requesterId)) {
             return res.status(403).json({ success: false, error: 'Unauthorized' });
         }
 
@@ -711,14 +715,15 @@ app.post('/api/stripe/payment/refund', stripeApiLimiter, async (req, res) => {
  * POST /api/stripe/payment/tracking
  * Seller provides a tracking number for a shipment.
  *
- * Body: { tradeId, sellerFirebaseUid, trackingNumber, carrier? }
+ * Body: { tradeId, sellerUserId, trackingNumber, carrier? }  (alias: sellerFirebaseUid)
  */
 app.post('/api/stripe/payment/tracking', stripeApiLimiter, async (req, res) => {
     try {
-        const { tradeId, sellerFirebaseUid, trackingNumber, carrier = 'Correos' } = req.body;
+        const { tradeId, sellerUserId, sellerFirebaseUid, trackingNumber, carrier = 'Correos' } = req.body;
+        const sellerId = sellerUserId || sellerFirebaseUid;
 
-        if (!tradeId || !sellerFirebaseUid || !trackingNumber) {
-            return res.status(400).json({ success: false, error: 'tradeId, sellerFirebaseUid and trackingNumber are required' });
+        if (!tradeId || !sellerId || !trackingNumber) {
+            return res.status(400).json({ success: false, error: 'tradeId, sellerUserId and trackingNumber are required' });
         }
 
         // Validate Correos España format when carrier is Correos (or not specified)
@@ -738,7 +743,7 @@ app.post('/api/stripe/payment/tracking', stripeApiLimiter, async (req, res) => {
             return res.status(404).json({ success: false, error: 'Payment record not found' });
         }
 
-        if (result.rows[0].seller_firebase_uid !== sellerFirebaseUid) {
+        if (result.rows[0].seller_firebase_uid !== String(sellerId)) {
             return res.status(403).json({ success: false, error: 'Unauthorized' });
         }
 
@@ -1143,6 +1148,7 @@ async function initializePaymentTables() {
     try {
         await initAuthTables(client);
         await initInboxTradesTables(client);
+        await initChatTables(client);
         await client.query(`
             CREATE TABLE IF NOT EXISTS user_stripe_accounts (
                 id                SERIAL PRIMARY KEY,

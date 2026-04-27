@@ -720,21 +720,12 @@ class ChatUI {
                         </div>
                         <p class="text-gray-700 dark:text-gray-300 font-semibold mb-2">Error al cargar los chats</p>
                         <p class="text-gray-500 dark:text-gray-400 text-sm mb-4">
-                            ${error.message === 'Permission denied' ? 
-                                'Permisos de Firebase no configurados correctamente' : 
-                                'No se pudieron cargar las conversaciones'}
+                            ${(error && error.message) || 'No se pudieron cargar las conversaciones'}
                         </p>
-                        ${error.message === 'Permission denied' ? 
-                            '<p class="text-xs text-gray-400 dark:text-gray-500">Actualiza las reglas en Firebase Console</p>' : 
-                            ''}
                     </div>
                 `;
                 
                 // Detener actualización automática si hay error de permisos
-                if (error.message === 'Permission denied' && this.chatListInterval) {
-                    clearInterval(this.chatListInterval);
-                    this.chatListInterval = null;
-                }
             }
         };
         
@@ -1031,82 +1022,29 @@ class ChatUI {
     async performDeleteChat(chatId) {
         try {
             console.log('🚀 Iniciando eliminación del chat:', chatId);
-            
-            // Importar módulos necesarios directamente para evitar caché
-            const { getDatabase, ref, get, remove } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-            const { getAuth } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js');
-            
-            const db = getDatabase();
-            const auth = getAuth();
-            const currentUser = auth.currentUser;
-            
-            if (!currentUser) {
-                throw new Error('Usuario no autenticado');
-            }
-            
-            // Normalizar chatId
+
             if (chatId.startsWith('trade_trade_')) {
                 chatId = chatId.replace('trade_trade_', 'trade_');
-                console.log('📝 ChatId normalizado:', chatId);
             }
-            
-            // Cerrar ventana de chat si está abierta
+
             const chatWindow = document.getElementById(`chat-window-${chatId}`);
             if (chatWindow) {
-                console.log('📤 Cerrando ventana de chat');
                 chatWindow.remove();
                 this.activeChats.delete(chatId);
                 this.minimizedChats.delete(chatId);
             }
-            
-            // Eliminar de localStorage
-            console.log('💾 Eliminando de localStorage');
+
             this.removeFromSavedChats(chatId);
-            
-            // Obtener datos del chat antes de eliminar
-            const chatRef = ref(db, `chats/${chatId}`);
-            console.log('👥 Obteniendo datos del chat...');
-            const snapshot = await get(chatRef);
-            
-            if (snapshot.exists()) {
-                const chatData = snapshot.val();
-                console.log('📊 Datos del chat encontrados');
-                
-                // Eliminar referencias de userChats
-                if (chatData?.metadata?.participants) {
-                    const participants = Object.keys(chatData.metadata.participants);
-                    console.log('👥 Participantes:', participants);
-                    
-                    for (const userId of participants) {
-                        try {
-                            const userChatRef = ref(db, `userChats/${userId}/${chatId}`);
-                            console.log(`🗑️ Eliminando referencia para ${userId}`);
-                            await remove(userChatRef);
-                        } catch (err) {
-                            console.warn(`⚠️ Error eliminando referencia de ${userId}:`, err);
-                        }
-                    }
-                }
-                
-                // Eliminar el chat principal
-                console.log('🔥 Eliminando chat principal...');
-                await remove(chatRef);
-                
-                // Verificar eliminación
-                console.log('🔍 Verificando eliminación...');
-                const checkSnapshot = await get(chatRef);
-                
-                if (checkSnapshot.exists()) {
-                    console.error('❌ El chat SIGUE existiendo');
-                    throw new Error('No se pudo eliminar el chat');
-                } else {
-                    console.log('✅ Confirmado: Chat eliminado de Firebase');
-                }
-            } else {
-                console.log('⚠️ El chat ya no existe en Firebase');
+
+            if (typeof window.authFetch !== 'function') {
+                throw new Error('API de chat no disponible');
             }
-            
-            // Desconectar listeners si los hay
+            const del = await window.authFetch(`/api/chats/${encodeURIComponent(chatId)}/admin`, { method: 'DELETE' });
+            const dj = await del.json().catch(() => ({}));
+            if (!del.ok || !dj.success) {
+                throw new Error(dj.error || 'No se pudo eliminar el chat');
+            }
+
             if (this.chatManager) {
                 this.chatManager.disconnectChat(chatId);
             }
@@ -1540,23 +1478,16 @@ window.testDeleteChat = async function(chatId) {
 
 // Función para verificar si el chat existe
 window.checkChatExists = async function(chatId) {
-    if (!window.chatManager) {
-        console.error('❌ chatManager no está disponible');
+    if (typeof window.authFetch !== 'function') {
+        console.error('❌ authFetch no disponible');
         return;
     }
-    
     try {
-        const { getDatabase, ref, get } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-        const db = getDatabase();
-        const chatRef = ref(db, `chats/${chatId}`);
-        const snapshot = await get(chatRef);
-        
-        if (snapshot.exists()) {
-            console.log('✅ El chat existe:', chatId);
-            console.log('📊 Datos:', snapshot.val());
-        } else {
-            console.log('❌ El chat NO existe:', chatId);
-        }
+        const r = await window.authFetch('/api/chats');
+        const j = await r.json().catch(() => ({}));
+        const list = Array.isArray(j.data) ? j.data : [];
+        const found = list.some((c) => c.id === chatId);
+        console.log(found ? '✅ El chat está en tu lista' : '❌ No aparece en tu lista de chats', chatId);
     } catch (error) {
         console.error('❌ Error al verificar chat:', error);
     }
@@ -1624,88 +1555,30 @@ window.forceDeleteChat = async function(chatId) {
     }
     
     try {
-        const { getDatabase, ref, get, remove } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-        const { getAuth } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js');
-        
-        const db = getDatabase();
-        const auth = getAuth();
-        const currentUser = auth.currentUser;
-        
-        if (!currentUser) {
-            throw new Error('Usuario no autenticado');
-        }
-        
-        // Normalizar chatId
         if (chatId.startsWith('trade_trade_')) {
             chatId = chatId.replace('trade_trade_', 'trade_');
-            console.log('📝 ChatId normalizado:', chatId);
         }
-        
-        const chatRef = ref(db, `chats/${chatId}`);
-        
-        // Obtener participantes primero
-        console.log('👥 Obteniendo datos del chat...');
-        const snapshot = await get(chatRef);
-        
-        if (!snapshot.exists()) {
-            console.log('❌ El chat no existe');
-            return;
+        if (typeof window.authFetch !== 'function') {
+            throw new Error('authFetch no disponible');
         }
-        
-        const chatData = snapshot.val();
-        console.log('📊 Datos del chat:', chatData);
-        
-        // Eliminar referencias de userChats
-        if (chatData?.metadata?.participants) {
-            const participants = Object.keys(chatData.metadata.participants);
-            console.log('👥 Participantes:', participants);
-            
-            for (const userId of participants) {
-                try {
-                    const userChatRef = ref(db, `userChats/${userId}/${chatId}`);
-                    console.log(`🗑️ Eliminando referencia para ${userId}`);
-                    await remove(userChatRef);
-                } catch (err) {
-                    console.warn(`⚠️ Error eliminando referencia de ${userId}:`, err);
-                }
-            }
+        const del = await window.authFetch(`/api/chats/${encodeURIComponent(chatId)}/admin`, { method: 'DELETE' });
+        const dj = await del.json().catch(() => ({}));
+        if (!del.ok || !dj.success) {
+            throw new Error(dj.error || 'Error al eliminar');
         }
-        
-        // Eliminar el chat
-        console.log('🔥 Eliminando chat principal...');
-        await remove(chatRef);
-        
-        // Verificar eliminación
-        console.log('🔍 Verificando eliminación...');
-        const checkSnapshot = await get(chatRef);
-        
-        if (checkSnapshot.exists()) {
-            console.error('❌ El chat SIGUE existiendo');
-        } else {
-            console.log('✅ Chat eliminado exitosamente');
-        }
-        
-        // Cerrar ventana de chat si está abierta
         const chatWindow = document.getElementById(`chat-window-${chatId}`);
         if (chatWindow) {
             chatWindow.remove();
         }
-        
-        // Actualizar UI si está disponible
         if (window.chatUI) {
             window.chatUI.updateMinimizedBar();
             window.chatUI.updateChatBadge();
             window.chatUI.activeChats.delete(chatId);
             window.chatUI.minimizedChats.delete(chatId);
             window.chatUI.removeFromSavedChats(chatId);
-            
-            // Mostrar notificación de éxito
             window.chatUI.showNotification('Chat eliminado correctamente', 'success');
         }
-        
-        // Disparar evento
         window.dispatchEvent(new Event('chatDeleted'));
-        
     } catch (error) {
         console.error('❌ Error en eliminación directa:', error);
         if (window.chatUI) {
@@ -1778,44 +1651,18 @@ window.deleteUserChat = async function(chatId) {
     }
     
     try {
-        const { getDatabase, ref, remove } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-        const { getAuth } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js');
-        
-        const db = getDatabase();
-        const auth = getAuth();
-        const currentUser = auth.currentUser;
-        
-        if (!currentUser) {
-            throw new Error('Usuario no autenticado');
-        }
-        
-        // Normalizar chatId
         if (chatId.startsWith('trade_trade_')) {
             chatId = chatId.replace('trade_trade_', 'trade_');
         }
-        
-        console.log('🗑️ Eliminando referencia userChat:', currentUser.uid);
-        
-        // Eliminar solo la referencia del usuario actual
-        const userChatRef = ref(db, `userChats/${currentUser.uid}/${chatId}`);
-        await remove(userChatRef);
-        
-        // También agregar a la lista de chats ocultos en localStorage para evitar que vuelva a aparecer
-        const hiddenChatsKey = `hiddenChats_${currentUser.uid}`;
-        let hiddenChats = [];
-        try {
-            hiddenChats = JSON.parse(localStorage.getItem(hiddenChatsKey) || '[]');
-        } catch (e) {
-            console.error('Error al leer chats ocultos:', e);
+        if (typeof window.authFetch !== 'function') {
+            throw new Error('authFetch no disponible');
         }
-        
-        if (!hiddenChats.includes(chatId)) {
-            hiddenChats.push(chatId);
-            localStorage.setItem(hiddenChatsKey, JSON.stringify(hiddenChats));
-            console.log('✅ Chat agregado a lista de chats ocultos');
+        const hid = await window.authFetch(`/api/chats/${encodeURIComponent(chatId)}`, { method: 'DELETE' });
+        const hj = await hid.json().catch(() => ({}));
+        if (!hid.ok || !hj.success) {
+            throw new Error(hj.error || 'Error al ocultar chat');
         }
-        
-        console.log('✅ Chat eliminado para el usuario actual');
+        console.log('✅ Chat oculto para el usuario actual');
         
         // Cerrar ventana si está abierta
         const chatWindow = document.getElementById(`chat-window-${chatId}`);
@@ -1848,69 +1695,20 @@ window.deleteUserChat = async function(chatId) {
 
 // Función de diagnóstico para ver por qué no se puede eliminar
 window.diagnoseChat = async function(chatId) {
-    console.log('🔍 Diagnosticando chat:', chatId);
-    
+    console.log('🔍 Diagnosticando chat (API):', chatId);
     try {
-        const { getDatabase, ref, get } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-        const { getAuth } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js');
-        
-        const db = getDatabase();
-        const auth = getAuth();
-        const currentUser = auth.currentUser;
-        
-        console.log('👤 Usuario actual:', currentUser?.uid, currentUser?.email);
-        
-        // Normalizar chatId
         if (chatId.startsWith('trade_trade_')) {
             chatId = chatId.replace('trade_trade_', 'trade_');
         }
-        
-        // Obtener datos del chat
-        const chatRef = ref(db, `chats/${chatId}`);
-        const snapshot = await get(chatRef);
-        
-        if (!snapshot.exists()) {
-            console.log('❌ El chat no existe');
+        if (typeof window.authFetch !== 'function') {
+            console.error('authFetch no disponible');
             return;
         }
-        
-        const chatData = snapshot.val();
-        console.log('📊 Datos del chat:', chatData);
-        
-        // Verificar participantes
-        if (chatData?.metadata?.participants) {
-            const participants = Object.entries(chatData.metadata.participants);
-            console.log('👥 Participantes:');
-            participants.forEach(([uid, data]) => {
-                console.log(`  - ${uid}: ${data.email || data.displayName || 'Sin nombre'}`);
-            });
-            
-            // Verificar permisos en userChats
-            console.log('\n🔐 Verificando permisos de userChats:');
-            for (const [userId, userData] of participants) {
-                try {
-                    const userChatRef = ref(db, `userChats/${userId}/${chatId}`);
-                    const userChatSnap = await get(userChatRef);
-                    
-                    if (userChatSnap.exists()) {
-                        console.log(`  ✅ userChats/${userId}/${chatId} existe`);
-                    } else {
-                        console.log(`  ⚠️ userChats/${userId}/${chatId} NO existe`);
-                    }
-                } catch (err) {
-                    console.log(`  ❌ Error accediendo a userChats/${userId}:`, err.message);
-                }
-            }
-        }
-        
-        // Contar mensajes
-        const messageCount = Object.keys(chatData.messages || {}).length;
-        console.log(`\n💬 Total de mensajes: ${messageCount}`);
-        
-        // Verificar creador
-        console.log(`\n📝 Creado: ${new Date(chatData.metadata?.createdAt).toLocaleString()}`);
-        console.log(`🏷️ Es chat de intercambio: ${chatData.metadata?.isTradeChat || false}`);
-        
+        const mr = await window.authFetch(
+            `/api/chats/${encodeURIComponent(chatId)}/messages?limit=5`
+        );
+        const mj = await mr.json().catch(() => ({}));
+        console.log('Mensajes (muestra):', mr.status, mj);
     } catch (error) {
         console.error('❌ Error en diagnóstico:', error);
     }
