@@ -51,6 +51,12 @@ async function initAuthTables(client) {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_app_sessions_user_id ON app_sessions (user_id)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_app_sessions_expires ON app_sessions (expires_at)`);
+    // Tras quitar Google/Firebase: filas con auth_provider=google y contraseña en BD deben tratarse como locales.
+    await client.query(`
+        UPDATE app_users
+        SET auth_provider = 'password', updated_at = NOW()
+        WHERE auth_provider = 'google' AND password_hash IS NOT NULL
+    `);
 }
 
 function pepper(plain) {
@@ -111,9 +117,35 @@ function mountAuthRoutes(app, pool) {
                 return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres' });
             }
 
-            const existing = await pool.query('SELECT id FROM app_users WHERE email = $1', [em]);
+            const existing = await pool.query(
+                'SELECT id, password_hash, auth_provider FROM app_users WHERE email = $1',
+                [em]
+            );
             if (existing.rows.length) {
-                return res.status(409).json({ success: false, error: 'Ya existe una cuenta con este email' });
+                const row = existing.rows[0];
+                if (row.password_hash) {
+                    return res
+                        .status(409)
+                        .json({ success: false, error: 'Ya existe una cuenta con este email. Inicia sesión o usa otra dirección.' });
+                }
+                // Cuenta sin contraseña en servidor (p. ej. marcada Google): permitir fijar contraseña con este registro.
+                const passwordHash = await hashPassword(pass);
+                const upd = await pool.query(
+                    `UPDATE app_users
+                     SET password_hash = $1, auth_provider = 'password', display_name = $2, updated_at = NOW()
+                     WHERE id = $3
+                     RETURNING id, email, display_name, auth_provider, created_at`,
+                    [passwordHash, uname, row.id]
+                );
+                const u = upd.rows[0];
+                const sid = await createSession(u.id);
+                const token = signSessionJwt(sid);
+                return res.json({
+                    success: true,
+                    user: { id: u.id, email: u.email, displayName: u.display_name, authProvider: u.auth_provider },
+                    token,
+                    sessionExpiresInDays: SESSION_DAYS
+                });
             }
 
             const passwordHash = await hashPassword(pass);
@@ -168,10 +200,11 @@ function mountAuthRoutes(app, pool) {
                 return res.status(401).json({ success: false, error: 'Credenciales incorrectas' });
             }
             const u = q.rows[0];
-            if (u.auth_provider === 'google') {
+            if (u.auth_provider === 'google' && !u.password_hash) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Esta cuenta se creó con Google. Inicia sesión con el botón de Google o el enlace adecuado.'
+                    error:
+                        'Esta cuenta no tiene contraseña en el servidor. Usa el mismo email en «Registrarse» para fijar una contraseña, o contacta al administrador del sitio.'
                 });
             }
             if (!u.password_hash) {
@@ -180,6 +213,13 @@ function mountAuthRoutes(app, pool) {
             const ok = await verifyPassword(pass, u.password_hash);
             if (!ok) {
                 return res.status(401).json({ success: false, error: 'Credenciales incorrectas' });
+            }
+            if (u.auth_provider === 'google' && u.password_hash) {
+                await pool.query(
+                    `UPDATE app_users SET auth_provider = 'password', updated_at = NOW() WHERE id = $1`,
+                    [u.id]
+                );
+                u.auth_provider = 'password';
             }
 
             const sid = await createSession(u.id);
